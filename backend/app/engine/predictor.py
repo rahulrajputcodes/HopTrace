@@ -31,6 +31,10 @@ SIM_MINUTES_PER_TICK = 2.0
     Simulated minutes represented by a single streaming tick.  Used to
     convert the predicted ETA from tick-units to minutes for the operator.
 
+MAX_HORIZON_MINUTES = 120.0
+    Maximum forecast horizon in simulated minutes. Beyond this, return no ETA
+    (prediction_confidence None).
+
 WINDOW = 10
     Maximum number of most-recent samples used for prediction.
 
@@ -40,7 +44,7 @@ MIN_SAMPLES = 6
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from backend.app.engine.models import Measurement
 from backend.app.engine.telemetry import BASELINE_TELEMETRY
@@ -63,6 +67,9 @@ MIN_SLOPE: float = 0.002
 
 SIM_MINUTES_PER_TICK: float = 2.0
 """Simulated minutes per streaming tick (used to convert ETA to minutes)."""
+
+MAX_HORIZON_MINUTES: float = 120.0
+"""Maximum forecast horizon in simulated minutes. Beyond this, return no ETA."""
 
 WINDOW: int = 10
 """Number of most-recent samples used for the trend fit."""
@@ -128,12 +135,8 @@ def compute_degradation_index(
 
 # ── Theil-Sen slope ───────────────────────────────────────────────────────────
 
-def _theil_sen_slope(xs: List[float], ys: List[float]) -> float:
-    """Compute the Theil-Sen estimator slope (pure Python, O(n²)).
-
-    Returns the median of all pairwise slopes (y2-y1)/(x2-x1) for i < j.
-    Returns 0.0 when fewer than two distinct x values exist.
-    """
+def _pairwise_theil_sen_slopes(xs: List[float], ys: List[float]) -> List[float]:
+    """Compute all pairwise slopes (y2-y1)/(x2-x1) for i < j, returned sorted."""
     slopes: List[float] = []
     n = len(xs)
     for i in range(n):
@@ -141,9 +144,18 @@ def _theil_sen_slope(xs: List[float], ys: List[float]) -> float:
             dx = xs[j] - xs[i]
             if dx != 0.0:
                 slopes.append((ys[j] - ys[i]) / dx)
+    slopes.sort()
+    return slopes
+
+
+def _theil_sen_slope(xs: List[float], ys: List[float]) -> float:
+    """Compute the Theil-Sen estimator slope (median of pairwise slopes).
+
+    Returns 0.0 when fewer than two distinct x values exist.
+    """
+    slopes = _pairwise_theil_sen_slopes(xs, ys)
     if not slopes:
         return 0.0
-    slopes.sort()
     mid = len(slopes) // 2
     if len(slopes) % 2 == 1:
         return slopes[mid]
@@ -191,11 +203,14 @@ def predict_link(
     Returns
     -------
     A dict with keys:
-        predicted_eta_minutes : float | None
-        prediction_confidence : str | None   ("high", "medium", "low")
-        prediction_r2         : float | None
+        predicted_eta_minutes     : float | None
+        prediction_confidence     : str | None   ("high", "medium", "low")
+        prediction_r2             : float | None
+        predicted_eta_min_minutes : float | None
+        predicted_eta_max_minutes : float | None
     or None if the input does not satisfy preconditions (not enough samples,
-    link already failed, trend too flat, link already at/past D_FAIL).
+    link already failed, trend too flat, link already at/past D_FAIL, or
+    predicted ETA exceeds MAX_HORIZON_MINUTES).
 
     Guard conditions that return None
     ----------------------------------
@@ -203,6 +218,7 @@ def predict_link(
     - Any sample has connectivity_ok=False (link is already down).
     - D_now >= D_FAIL (link has already crossed the failure threshold).
     - Theil-Sen slope <= MIN_SLOPE (trend is too flat to predict reliably).
+    - predicted_eta_minutes > MAX_HORIZON_MINUTES (beyond predictable horizon).
     """
     bl = baselines or BASELINE_TELEMETRY
     baseline = bl.get(link_id, {})
@@ -232,16 +248,50 @@ def predict_link(
         return None
 
     xs = [float(i) for i in range(n)]
-    slope = _theil_sen_slope(xs, d_values)
+    slopes = _pairwise_theil_sen_slopes(xs, d_values)
+    if not slopes:
+        return None
+
+    mid = len(slopes) // 2
+    slope = slopes[mid] if len(slopes) % 2 == 1 else (slopes[mid - 1] + slopes[mid]) / 2.0
 
     # Guard: trend is too flat
     if slope <= MIN_SLOPE:
         return None
 
-    r2 = _r_squared(xs, d_values, slope)
-
     eta_ticks = (D_FAIL - d_now) / slope
     predicted_eta_minutes = round(eta_ticks * SIM_MINUTES_PER_TICK, 1)
+
+    # Guard: beyond maximum horizon
+    if predicted_eta_minutes > MAX_HORIZON_MINUTES:
+        return None
+
+    # 20th and 80th percentiles of pairwise Theil-Sen slopes
+    m = len(slopes)
+    p20_idx = int(round(0.20 * (m - 1)))
+    p80_idx = int(round(0.80 * (m - 1)))
+    s_20 = slopes[p20_idx]
+    s_80 = slopes[p80_idx]
+
+    # Steeper slope (s_80) gives lower bound ETA; gentler slope (s_20) gives upper bound ETA
+    if s_80 > 0:
+        eta_min_ticks = (D_FAIL - d_now) / s_80
+        predicted_eta_min_minutes = max(0.0, round(eta_min_ticks * SIM_MINUTES_PER_TICK, 1))
+    else:
+        predicted_eta_min_minutes = predicted_eta_minutes
+
+    if s_20 > MIN_SLOPE:
+        eta_max_ticks = (D_FAIL - d_now) / s_20
+        predicted_eta_max_minutes = min(
+            MAX_HORIZON_MINUTES, round(eta_max_ticks * SIM_MINUTES_PER_TICK, 1)
+        )
+    else:
+        predicted_eta_max_minutes = MAX_HORIZON_MINUTES
+
+    predicted_eta_min_minutes = min(predicted_eta_min_minutes, predicted_eta_minutes)
+    predicted_eta_max_minutes = max(predicted_eta_max_minutes, predicted_eta_minutes)
+
+    r2 = _r_squared(xs, d_values, slope)
 
     if r2 >= 0.8 and n >= WINDOW:
         confidence: str = "high"
@@ -254,4 +304,6 @@ def predict_link(
         "predicted_eta_minutes": predicted_eta_minutes,
         "prediction_confidence": confidence,
         "prediction_r2": round(r2, 4),
+        "predicted_eta_min_minutes": predicted_eta_min_minutes,
+        "predicted_eta_max_minutes": predicted_eta_max_minutes,
     }

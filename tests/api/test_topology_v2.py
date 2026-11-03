@@ -126,6 +126,8 @@ def test_topology_risk_schema_fields(client: TestClient) -> None:
         "predicted_eta_minutes",
         "prediction_confidence",
         "prediction_r2",
+        "predicted_eta_min_minutes",
+        "predicted_eta_max_minutes",
     ]
     for field in required_fields:
         assert field in entry, f"Missing field '{field}' in LinkRiskItem"

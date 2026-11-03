@@ -320,3 +320,53 @@ def test_time_series_store_risk_snapshot_predicts_ramp() -> None:
     assert entry["predicted_eta_minutes"] is not None
     assert entry["predicted_eta_minutes"] > 0
     assert entry["prediction_confidence"] in ("high", "medium", "low")
+    assert entry["predicted_eta_min_minutes"] is not None
+    assert entry["predicted_eta_max_minutes"] is not None
+    assert (
+        entry["predicted_eta_min_minutes"]
+        <= entry["predicted_eta_minutes"]
+        <= entry["predicted_eta_max_minutes"]
+    )
+
+
+# ── Test: MAX_HORIZON_MINUTES cutoff & range bounds ──────────────────────────
+
+
+def test_max_horizon_cutoff() -> None:
+    """When ETA would exceed MAX_HORIZON_MINUTES (120), return None."""
+    # Construct a very slow ramp above D_WARN where ETA > 120 minutes.
+    # D starts at 0.06 and increases by 0.003 per sample.
+    # D_now at sample 6 = 0.06 + 5 * 0.003 = 0.075.
+    # Slope = 0.003 (> MIN_SLOPE 0.002).
+    # ETA ticks = (0.6 - 0.075) / 0.003 = 175 ticks = 350 minutes > 120.
+    # This must return None because it exceeds MAX_HORIZON_MINUTES.
+    base = BASELINE_TELEMETRY["L3"]
+    # We can craft measurements with custom loss/latency to get desired D
+    samples = []
+    for i in range(8):
+        loss_val = 0.5 + (0.06 + i * 0.003) * 50.0  # causes D to rise gradually
+        samples.append(
+            Measurement(
+                component_id="L3",
+                latency_ms=25.0,
+                packet_loss_pct=loss_val,
+                throughput_mbps=35.0,
+                connectivity_ok=True,
+            )
+        )
+    result = predict_link("L3", samples)
+    assert result is None, "ETA exceeding MAX_HORIZON_MINUTES must return None"
+
+
+def test_prediction_range_bounds() -> None:
+    """Range bounds [eta_min, eta_max] must satisfy min <= median <= max."""
+    samples = make_ramp_samples("L3", "high", n=10, start_progress=0.15, progress_step=0.025)
+    result = predict_link("L3", samples)
+    assert result is not None
+    eta = result["predicted_eta_minutes"]
+    eta_min = result["predicted_eta_min_minutes"]
+    eta_max = result["predicted_eta_max_minutes"]
+    assert eta is not None
+    assert eta_min is not None
+    assert eta_max is not None
+    assert eta_min <= eta <= eta_max

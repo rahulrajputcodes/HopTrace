@@ -67,6 +67,22 @@ class LinkRiskItem(BaseModel):
             "Null when no prediction is issued."
         ),
     )
+    predicted_eta_min_minutes: Optional[float] = Field(
+        None,
+        description=(
+            "Lower bound of the predicted time-to-failure in simulated minutes, "
+            "derived from the 80th percentile slope (fastest degradation trend). "
+            "Null when no prediction is issued."
+        ),
+    )
+    predicted_eta_max_minutes: Optional[float] = Field(
+        None,
+        description=(
+            "Upper bound of the predicted time-to-failure in simulated minutes, "
+            "derived from the 20th percentile slope (slowest degradation trend). "
+            "Null when no prediction is issued."
+        ),
+    )
 
 
 @router.get(

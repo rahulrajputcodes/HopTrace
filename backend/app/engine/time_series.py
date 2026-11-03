@@ -79,15 +79,17 @@ class TimeSeriesStore:
         """Return a per-link risk snapshot including optional ETA predictions.
 
         For each link with at least one sample, returns a dict containing:
-            link_id              : str
-            connectivity_ok      : bool | None
-            packet_loss_pct      : float | None
-            latency_ms           : float | None
-            throughput_mbps      : float | None
-            data_source          : str ("simulated")
-            predicted_eta_minutes: float | None   (optional, from predictor)
-            prediction_confidence: str | None     (optional: high/medium/low)
-            prediction_r2        : float | None   (optional)
+            link_id                  : str
+            connectivity_ok          : bool | None
+            packet_loss_pct          : float | None
+            latency_ms               : float | None
+            throughput_mbps          : float | None
+            data_source              : str ("simulated")
+            predicted_eta_minutes    : float | None   (optional, from predictor)
+            prediction_confidence    : str | None     (optional: high/medium/low)
+            prediction_r2            : float | None   (optional)
+            predicted_eta_min_minutes: float | None   (optional, 20th percentile)
+            predicted_eta_max_minutes: float | None   (optional, 80th percentile)
 
         All prediction fields are absent (None) when the predictor cannot
         issue a forecast (too few samples, link stable, link already failed).
@@ -111,6 +113,8 @@ class TimeSeriesStore:
                 "predicted_eta_minutes": None,
                 "prediction_confidence": None,
                 "prediction_r2": None,
+                "predicted_eta_min_minutes": None,
+                "predicted_eta_max_minutes": None,
             }
 
             prediction = predict_link(link_id, samples, baselines=bl)
@@ -118,6 +122,8 @@ class TimeSeriesStore:
                 entry["predicted_eta_minutes"] = prediction["predicted_eta_minutes"]
                 entry["prediction_confidence"] = prediction["prediction_confidence"]
                 entry["prediction_r2"] = prediction["prediction_r2"]
+                entry["predicted_eta_min_minutes"] = prediction.get("predicted_eta_min_minutes")
+                entry["predicted_eta_max_minutes"] = prediction.get("predicted_eta_max_minutes")
 
             snapshot.append(entry)
 

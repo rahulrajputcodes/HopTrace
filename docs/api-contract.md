@@ -305,12 +305,15 @@ Response — array of `LinkRiskItem`:
 | `predicted_eta_minutes` | float \| null | Simulated minutes until D_FAIL threshold is crossed |
 | `prediction_confidence` | "high"\|"medium"\|"low"\|null | R²-based confidence: high ≥ 0.8 (n≥10), medium ≥ 0.5 |
 | `prediction_r2` | float \| null | Theil-Sen trend R² |
+| `predicted_eta_min_minutes` | float \| null | Lower bound of time-to-failure (80th percentile slope) |
+| `predicted_eta_max_minutes` | float \| null | Upper bound of time-to-failure (20th percentile slope) |
 
 Fields are null when:
 - Fewer than 6 samples stored for the link.
 - Link is stable (slope ≤ MIN_SLOPE = 0.002).
 - Link is already at or past D_FAIL = 0.6.
 - Link has `connectivity_ok=False` (already failed).
+- Predicted ETA exceeds `MAX_HORIZON_MINUTES = 120.0`.
 
 Empty array is returned when the time-series store has no data (server just
 started or no streaming ticks have occurred).
