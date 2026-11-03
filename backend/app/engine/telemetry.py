@@ -36,6 +36,7 @@ RAMP_TICKS = 40 (approximately 2 minutes at the 3-second streaming tick).
 from __future__ import annotations
 
 import math
+import random
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from backend.app.engine.models import Measurement
@@ -78,6 +79,20 @@ BASELINE_TELEMETRY: Dict[str, Dict[str, float | bool]] = {
         "throughput_mbps": 60.0,
         "connectivity_ok": True,
     },
+}
+
+# Extended baseline for 60 GHz millimeter-wave link (e.g. L7 PtP high-bandwidth link)
+# Kept separate from canonical BASELINE_TELEMETRY to preserve 5-link topology contract.
+L7_BASELINE: Dict[str, float | bool] = {
+    "latency_ms": 2.0,
+    "packet_loss_pct": 0.1,
+    "throughput_mbps": 950.0,
+    "connectivity_ok": True,
+}
+
+EXTENDED_BASELINE_TELEMETRY: Dict[str, Dict[str, float | bool]] = {
+    **BASELINE_TELEMETRY,
+    "L7": L7_BASELINE,
 }
 
 # Severity scaling factors for degradation scenarios
@@ -222,13 +237,37 @@ class SimulatedTelemetryGenerator:
                     )
                     continue
 
-            # gradual_degradation scenario: linear ramp on target link
+            # gradual_degradation / realistic fault scenarios
+            realistic_faults = (
+                "ramp_linear",
+                "ramp_accelerating",
+                "step_with_noise",
+                "rain_fade",
+                "diurnal_load",
+                "flapping_precursor",
+                "stable_noisy",
+            )
             if scenario == "gradual_degradation" and link_id == target_link_id:
                 measurements.append(
                     self.generate_ramp_measurement(
                         link_id=link_id,
                         severity=severity,
                         progress=ramp_progress,
+                        timestamp=ts,
+                    )
+                )
+                continue
+            elif scenario in realistic_faults and (
+                link_id == target_link_id or scenario in ("diurnal_load", "stable_noisy")
+            ):
+                sim_tick = int(round(ramp_progress * 40))
+                measurements.append(
+                    self.generate_fault_scenario_sample(
+                        scenario=scenario,
+                        link_id=link_id,
+                        tick=sim_tick,
+                        seed=42,
+                        severity=severity,
                         timestamp=ts,
                     )
                 )
@@ -267,6 +306,141 @@ class SimulatedTelemetryGenerator:
                 )
 
         return measurements
+
+    def generate_fault_scenario_sample(
+        self,
+        scenario: str,
+        link_id: str,
+        tick: int,
+        seed: int,
+        severity: str = "medium",
+        ramp_length: str = "medium",
+        noise_level: str = "normal",
+        timestamp: Optional[str] = None,
+    ) -> Measurement:
+        """Generates a seeded stochastic measurement for realistic fault scenarios.
+
+        Scenarios:
+        - ramp_linear: Linear ramp over 20 (short), 40 (medium), or 80 (long) ticks + Gaussian noise.
+        - ramp_accelerating: Quadratic ramp p = (t/T)^2 (corroding connector / thermal runaway).
+        - step_with_noise: Sudden abrupt step fault at tick 15.
+        - rain_fade: Transient attenuation burst on 60 GHz link L7 (ticks 10-25) that recovers.
+        - diurnal_load: Cyclic healthy variation over 60-tick cycle (no fault, no packet loss).
+        - flapping_precursor: Increasing variance precursor before connectivity drops at tick 35.
+        - stable_noisy: Healthy baseline with heavy zero-mean Gaussian noise.
+        """
+        ts = timestamp or datetime.now(timezone.utc).isoformat()
+        base = self.baselines.get(
+            link_id,
+            EXTENDED_BASELINE_TELEMETRY.get(
+                link_id,
+                {"latency_ms": 20.0, "packet_loss_pct": 0.0, "throughput_mbps": 50.0, "connectivity_ok": True},
+            ),
+        )
+        factors = SEVERITY_FACTORS.get(severity, SEVERITY_FACTORS["medium"])
+
+        base_lat = float(base.get("latency_ms", 20.0))
+        base_loss = float(base.get("packet_loss_pct", 0.0))
+        base_tp = float(base.get("throughput_mbps", 50.0))
+
+        # Target full-fault delta values
+        delta_lat = float(factors["latency_delta_ms"])
+        delta_loss = float(factors["packet_loss_delta_pct"])
+        target_tp = base_tp * float(factors["throughput_multiplier"])
+        delta_tp = target_tp - base_tp
+
+        # Seeded random generator for reproducible noise
+        link_hash = sum(ord(c) for c in link_id)
+        rng = random.Random(seed * 10007 + tick * 37 + link_hash)
+
+        noise_mult = 0.5 if noise_level == "low" else (2.0 if noise_level == "high" else 1.0)
+        eps_lat = rng.gauss(0.0, 1.0 * noise_mult)
+        eps_loss = rng.gauss(0.0, 0.2 * noise_mult)
+        eps_tp = rng.gauss(0.0, 1.5 * noise_mult)
+
+        conn_ok = True
+        lat_val = base_lat
+        loss_val = base_loss
+        tp_val = base_tp
+
+        # Ramp duration selection
+        durations = {"short": 20, "medium": 40, "long": 80}
+        ramp_dur = durations.get(ramp_length, 40)
+
+        if scenario in ("ramp_linear", "gradual_degradation"):
+            p = min(1.0, max(0.0, tick / float(ramp_dur)))
+            lat_val = base_lat + p * delta_lat + eps_lat
+            loss_val = max(0.0, base_loss + p * delta_loss + eps_loss)
+            tp_val = max(0.1, base_tp + p * delta_tp + eps_tp)
+
+        elif scenario == "ramp_accelerating":
+            p = min(1.0, max(0.0, (tick / float(ramp_dur)) ** 2))
+            lat_val = base_lat + p * delta_lat + eps_lat
+            loss_val = max(0.0, base_loss + p * delta_loss + eps_loss)
+            tp_val = max(0.1, base_tp + p * delta_tp + eps_tp)
+
+        elif scenario == "step_with_noise":
+            step_tick = 15
+            p = 1.0 if tick >= step_tick else 0.0
+            lat_val = base_lat + p * delta_lat + eps_lat
+            loss_val = max(0.0, base_loss + p * delta_loss + eps_loss)
+            tp_val = max(0.1, base_tp + p * delta_tp + eps_tp)
+
+        elif scenario == "rain_fade":
+            # Attenuation burst from tick 10 to tick 25, then recovers
+            if 10 <= tick <= 25:
+                fade = math.sin(math.pi * (tick - 10) / 15.0)
+                lat_val = base_lat + (delta_lat * 0.4) * fade + eps_lat
+                loss_val = max(0.0, base_loss + (delta_loss * 0.7) * fade + eps_loss)
+                tp_val = max(0.1, base_tp + (delta_tp * 0.6) * fade + eps_tp)
+            else:
+                lat_val = base_lat + eps_lat
+                loss_val = max(0.0, base_loss + eps_loss)
+                tp_val = max(0.1, base_tp + eps_tp)
+
+        elif scenario == "diurnal_load":
+            # Normal periodic cycle (period = 60 ticks); latency rises +10ms, tp drops 25%, loss remains 0%
+            cycle = max(0.0, math.sin(2.0 * math.pi * tick / 60.0))
+            lat_val = base_lat + 12.0 * cycle + eps_lat
+            loss_val = max(0.0, base_loss + eps_loss * 0.2)
+            tp_val = max(0.1, base_tp * (1.0 - 0.25 * cycle) + eps_tp)
+
+        elif scenario == "flapping_precursor":
+            drop_tick = 35
+            if tick >= drop_tick:
+                conn_ok = False
+                lat_val = None
+                loss_val = 100.0
+                tp_val = 0.0
+            else:
+                # Growing noise variance before drop
+                var_scale = 1.0 + 0.15 * tick
+                lat_val = base_lat + rng.gauss(0.0, 1.2 * var_scale)
+                loss_val = max(0.0, base_loss + abs(rng.gauss(0.0, 0.4 * var_scale)))
+                tp_val = max(0.1, base_tp + rng.gauss(0.0, 2.0 * var_scale))
+
+        elif scenario == "stable_noisy":
+            # Heavy noise on healthy link
+            heavy_noise = 3.0 * noise_mult
+            lat_val = max(1.0, base_lat + rng.gauss(0.0, 1.5 * heavy_noise))
+            loss_val = max(0.0, base_loss + abs(rng.gauss(0.0, 0.3 * heavy_noise)))
+            tp_val = max(0.1, base_tp + rng.gauss(0.0, 3.0 * heavy_noise))
+
+        else:
+            # Baseline
+            lat_val = base_lat + eps_lat
+            loss_val = max(0.0, base_loss + eps_loss)
+            tp_val = max(0.1, base_tp + eps_tp)
+
+        return Measurement(
+            component_id=link_id,
+            timestamp_utc=ts,
+            latency_ms=round(lat_val, 2) if lat_val is not None else None,
+            packet_loss_pct=round(loss_val, 2) if loss_val is not None else None,
+            throughput_mbps=round(tp_val, 2) if tp_val is not None else None,
+            connectivity_ok=conn_ok,
+            data_source="simulated",
+        )
 
     def generate_ramp_measurement(
         self,
