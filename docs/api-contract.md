@@ -237,3 +237,134 @@ measurements or subscriber counts.
 
 All members must communicate contract changes before
 implementing incompatible interfaces.
+
+
+---
+
+## Section 5 — Predictive Fault AI (feat/predictive)
+
+> Owner: Member 2. All prediction fields are OPTIONAL and ADDITIVE.
+> No existing field is renamed or removed.
+
+### 5.1 Gradual Degradation Scenario
+
+`POST /api/v1/lab/run` now accepts `scenario: "gradual_degradation"`.
+
+Request (same shape as `degrade_link`):
+```json
+{
+  "scenario": "gradual_degradation",
+  "target_link_id": "L3",
+  "severity": "high"
+}
+```
+
+Behaviour:
+- Registers a linear ramp on the target link (RAMP_TICKS = 40 ticks ≈ 2 min).
+- At tick 0 (the instant of this call) progress = 0: link is at baseline,
+  `incident_id` is always `null`.
+- The WebSocket streaming loop (`/ws/telemetry`) advances the ramp each tick.
+- A `baseline` run clears the ramp; any subsequent `degrade_link` run also
+  clears it.
+
+Response: same `LabRunResponse` shape as all other scenarios.
+
+---
+
+### 5.2 GET /api/v1/topology/risk
+
+Returns per-link current telemetry plus optional ETA-to-failure predictions.
+
+```
+GET /api/v1/topology/risk
+200 OK
+Content-Type: application/json
+```
+
+Response — array of `LinkRiskItem`:
+```json
+[
+  {
+    "link_id": "L3",
+    "connectivity_ok": true,
+    "packet_loss_pct": 8.2,
+    "latency_ms": 87.4,
+    "throughput_mbps": 18.1,
+    "data_source": "simulated",
+    "predicted_eta_minutes": 14.0,
+    "prediction_confidence": "medium",
+    "prediction_r2": 0.71
+  }
+]
+```
+
+**Optional prediction fields** (null when not available):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `predicted_eta_minutes` | float \| null | Simulated minutes until D_FAIL threshold is crossed |
+| `prediction_confidence` | "high"\|"medium"\|"low"\|null | R²-based confidence: high ≥ 0.8 (n≥10), medium ≥ 0.5 |
+| `prediction_r2` | float \| null | Theil-Sen trend R² |
+
+Fields are null when:
+- Fewer than 6 samples stored for the link.
+- Link is stable (slope ≤ MIN_SLOPE = 0.002).
+- Link is already at or past D_FAIL = 0.6.
+- Link has `connectivity_ok=False` (already failed).
+
+Empty array is returned when the time-series store has no data (server just
+started or no streaming ticks have occurred).
+
+---
+
+### 5.3 WebSocket ws://host/api/v1/ws/telemetry
+
+Streams simulated telemetry at 3-second intervals.
+
+Message format (flat JSON, one object per tick):
+```json
+{
+  "tick": 12,
+  "links": [
+    {
+      "link_id": "L3",
+      "connectivity_ok": true,
+      "packet_loss_pct": 8.2,
+      "latency_ms": 87.4,
+      "throughput_mbps": 18.1,
+      "data_source": "simulated",
+      "predicted_eta_minutes": 14.0,
+      "prediction_confidence": "medium",
+      "prediction_r2": 0.71
+    }
+  ]
+}
+```
+
+- All `links` entries are flat objects (no nesting).
+- Prediction fields follow the same null rules as §5.2.
+- The streaming loop also runs the diagnostic engine and persists newly opened
+  incidents to SQLite (at most one open incident per suspected component).
+
+---
+
+### 5.4 Prediction Design Notes
+
+**Degradation Index (D)**:
+```
+D = (0.30*s_loss + 0.20*s_lat + 0.10*s_tp) / 0.60,  D ∈ [0, 1]
+```
+where s_loss/s_lat/s_tp use identical normalisation to DiagnosticEngine.evaluate_link.
+The connectivity term is excluded (link-down ≠ about-to-fail).
+
+**Why not risk_score?**
+The time-series risk_score uses EWMA-relative metrics.  EWMA tracks slow ramps,
+so risk_score stays below ~55 and never reaches 75 (the alarm threshold).
+D is always relative to the documented static baseline, so it rises monotonically
+with degradation and reaches D_FAIL = 0.6 at roughly "medium" fault severity.
+
+**Lead time** (L3, high severity, RAMP_TICKS=40):
+- Tick 5: first prediction issued (D ≈ 0.12, slope established)
+- Tick 8: diagnostic engine opens incident (composite score > 0.10)
+- Tick 23: D crosses D_FAIL = 0.6
+- **Lead time ≈ 3 ticks (6 simulated minutes) before the incident opens**

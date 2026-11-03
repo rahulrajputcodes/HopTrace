@@ -22,7 +22,9 @@ from app.api.incidents import router as incidents_router
 from app.api.lab import router as lab_router
 from app.api.measurements import router as measurements_router
 from app.api.subscribers import router as subscribers_router
+from app.api.telemetry_ws import router as telemetry_ws_router
 from app.api.topology import router as topology_router
+from app.api.topology_v2 import router as topology_v2_router
 from app.config import settings
 from app.db.init import init_db
 
@@ -75,8 +77,10 @@ API_PREFIX = "/api/v1"
 
 app.include_router(health_router, prefix=API_PREFIX, tags=["health"])
 app.include_router(topology_router, prefix=API_PREFIX, tags=["topology"])
+app.include_router(topology_v2_router, prefix=API_PREFIX, tags=["topology"])
 app.include_router(subscribers_router, prefix=API_PREFIX, tags=["subscribers"])
 app.include_router(incidents_router, prefix=API_PREFIX, tags=["incidents"])
 app.include_router(lab_router, prefix=API_PREFIX, tags=["lab"])
 app.include_router(measurements_router, prefix=API_PREFIX, tags=["measurements"])
 app.include_router(explanations_router, prefix=API_PREFIX, tags=["explanations"])
+app.include_router(telemetry_ws_router, prefix=API_PREFIX, tags=["telemetry"])
