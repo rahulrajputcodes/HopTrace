@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 const API_BASE = '/api/v1';
@@ -38,6 +38,9 @@ export default function App() {
   // Reminder tracking (stores exact backend record: status, delivery_status)
   const [reminderRecords, setReminderRecords] = useState({});
 
+  // Risk snapshot: map of link_id -> { predicted_eta_minutes, prediction_confidence, prediction_r2 }
+  const [riskByLink, setRiskByLink] = useState({});
+
   // Lab Controls
   const [scenario, setScenario] = useState('degrade_link');
   const [targetType, setTargetType] = useState('link');
@@ -47,6 +50,24 @@ export default function App() {
   // Hindi explanation
   const [hindiExplanation, setHindiExplanation] = useState('');
   const [explainingHindi, setExplainingHindi] = useState(false);
+
+  // Fetch /topology/risk and merge prediction data into riskByLink state.
+  // Never crashes when the endpoint is absent or returns unexpected data.
+  const fetchRisk = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/topology/risk`, { signal: AbortSignal.timeout(2000) });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      const map = {};
+      data.forEach((entry) => {
+        if (entry && entry.link_id) map[entry.link_id] = entry;
+      });
+      setRiskByLink(map);
+    } catch {
+      // Network error or timeout — silently ignore; badge simply won't appear
+    }
+  }, []);
 
   // 1. Health check
   const checkHealth = useCallback(async () => {
@@ -162,16 +183,26 @@ export default function App() {
         setActiveIncident(null);
         setIncidentSubscribers([]);
       }
+
+      // Risk snapshot for predictive badges
+      await fetchRisk();
     } catch (err) {
       setErrorMsg(`Failed to sync backend state: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  }, [checkHealth]);
+  }, [checkHealth, fetchRisk]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Poll /topology/risk every 5 seconds for predictive ETA badges.
+  // Interval is cleared on unmount; no side effects when backend is offline.
+  useEffect(() => {
+    const id = setInterval(fetchRisk, 5000);
+    return () => clearInterval(id);
+  }, [fetchRisk]);
 
   // Run Scenario & Clear Stale Incident on Baseline
   const handleRunScenario = async (e) => {
@@ -368,6 +399,10 @@ export default function App() {
                 else if (isSuspected) strokeColor = '#f43f5e';
                 else if (isDegraded) strokeColor = '#f59e0b';
 
+                const linkRisk = riskByLink[link.id];
+                const hasEta = linkRisk && linkRisk.predicted_eta_minutes != null;
+                const badgeWidth = hasEta ? 140 : 64;
+
                 const midX = (srcNode.x + tgtNode.x) / 2;
                 const midY = (srcNode.y + tgtNode.y) / 2 - 12;
 
@@ -399,16 +434,19 @@ export default function App() {
                       strokeDasharray={isSuspected ? '6,4' : isDegraded ? '4,4' : 'none'}
                     />
                     <rect
-                      x={midX - 32}
+                      x={midX - badgeWidth / 2}
                       y={midY - 10}
-                      width="64"
+                      width={badgeWidth}
                       height="20"
                       rx="4"
                       fill={isSelected ? '#334155' : '#1e293b'}
-                      stroke={isSelected ? '#60a5fa' : isSuspected ? '#ef4444' : '#475569'}
+                      stroke={isSelected ? '#60a5fa' : isSuspected ? '#ef4444' : hasEta ? '#f59e0b' : '#475569'}
                     />
                     <text x={midX} y={midY + 4} textAnchor="middle" fill="#94a3b8" fontSize="10">
                       {link.latency_ms != null ? `${link.latency_ms}ms` : '—'} | {link.packet_loss_pct != null ? `${link.packet_loss_pct}%` : '—'}
+                      {hasEta && (
+                        <tspan fill="#f59e0b">{` · ~${Math.round(linkRisk.predicted_eta_minutes)} min (${linkRisk.prediction_confidence})`}</tspan>
+                      )}
                     </text>
                   </g>
                 );
