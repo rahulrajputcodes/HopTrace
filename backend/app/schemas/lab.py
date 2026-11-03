@@ -12,6 +12,7 @@ from typing_extensions import Self
 ScenarioType = Literal[
     "baseline",
     "degrade_link",
+    "gradual_degradation",
     "access_point_failure",
     "upstream_failure",
     "ambiguous_fault",
@@ -22,7 +23,10 @@ SeverityType = Literal["low", "medium", "high"]
 class LabRunRequest(BaseModel):
     scenario: ScenarioType = Field(
         ...,
-        description="Scenario to run: baseline, degrade_link, access_point_failure, upstream_failure, ambiguous_fault",
+        description=(
+            "Scenario to run: baseline, degrade_link, gradual_degradation, "
+            "access_point_failure, upstream_failure, ambiguous_fault"
+        ),
         examples=["degrade_link"],
     )
     target_link_id: Optional[str] = Field(
@@ -43,10 +47,10 @@ class LabRunRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_required_targets(self) -> Self:
-        if self.scenario == "degrade_link" and (
+        if self.scenario in ("degrade_link", "gradual_degradation") and (
             not self.target_link_id or not self.target_link_id.strip()
         ):
-            raise ValueError("target_link_id is required for degrade_link scenario")
+            raise ValueError("target_link_id is required for degrade_link and gradual_degradation scenarios")
         if self.scenario in ("access_point_failure", "upstream_failure") and (
             not self.target_node_id or not self.target_node_id.strip()
         ):

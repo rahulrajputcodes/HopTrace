@@ -27,7 +27,7 @@ from backend.app.engine.models import (
     ScenarioRunResponse,
 )
 from backend.app.engine.neo4j_client import get_neo4j_client
-from backend.app.engine.telemetry import SimulatedTelemetryGenerator
+from backend.app.engine.telemetry import RAMP_TICKS, SimulatedTelemetryGenerator
 
 
 class HopTraceEngine:
@@ -46,6 +46,11 @@ class HopTraceEngine:
         self._incidents: Dict[str, IncidentDetails] = {}
         self._incident_order: List[str] = []
 
+        # Ramp state for gradual_degradation scenario.
+        # Cleared when a baseline run or any new scenario replaces it.
+        self._ramp: Optional[Dict[str, Any]] = None  # keys: target_link_id, severity, start_tick
+        self._tick_counter: int = 0  # monotonic tick counter shared with streaming loop
+
     def is_neo4j_available(self) -> bool:
         """Checks if live Neo4j database is accessible."""
         if not self.prefer_neo4j:
@@ -58,6 +63,44 @@ class HopTraceEngine:
         if force_in_memory or not self.is_neo4j_available():
             return self.in_memory_store
         return self.neo4j_store
+
+    # ── Ramp state management ────────────────────────────────────────────────
+
+    def start_ramp(self, target_link_id: str, severity: str) -> None:
+        """Starts a gradual_degradation ramp on the given link.
+
+        Records the ramp parameters and the current tick as the start tick.
+        Resets any previous ramp state.
+        """
+        self._ramp = {
+            "target_link_id": target_link_id,
+            "severity": severity,
+            "start_tick": self._tick_counter,
+        }
+
+    def clear_ramp(self) -> None:
+        """Clears ramp state.  Called when a baseline run or a new scenario replaces the ramp."""
+        self._ramp = None
+
+    def get_ramp_state(self) -> Optional[Dict[str, Any]]:
+        """Returns the current ramp state dict or None if no ramp is active."""
+        return self._ramp
+
+    def advance_ramp_tick(self) -> float:
+        """Increments the internal tick counter and returns the current ramp progress.
+
+        progress = min(1.0, ticks_since_start / RAMP_TICKS).
+        Returns 0.0 if no ramp is active (for streaming loop convenience).
+        """
+        self._tick_counter += 1
+        if self._ramp is None:
+            return 0.0
+        ticks_since_start = self._tick_counter - self._ramp["start_tick"]
+        return min(1.0, ticks_since_start / RAMP_TICKS)
+
+    def get_current_tick(self) -> int:
+        """Returns the current monotonic tick counter."""
+        return self._tick_counter
 
     def seed_topology(self, force_in_memory: bool = False) -> Dict[str, Any]:
         """Seeds the topology idempotently into the active store.
@@ -93,13 +136,23 @@ class HopTraceEngine:
         missing_link_ids: Optional[List[str]] = None,
         ambiguous_link_ids: Optional[List[str]] = None,
         force_in_memory: bool = False,
+        ramp_progress: float = 0.0,
     ) -> ScenarioRunResponse:
         """Runs a network telemetry scenario and triggers fault localization.
 
         CRITICAL VALIDATION RULE:
         The diagnostic engine receives ONLY observed telemetry, baseline metrics,
         and topology. It NEVER receives target_link_id or scenario name.
+
+        For gradual_degradation: ramp_progress controls how far along the ramp
+        the current tick is. At 0 the link is at baseline; at 1.0 it matches
+        full degrade_link severity. The caller (lab.py or the streaming loop)
+        is responsible for computing progress from the ramp state.
         """
+        # Clear ramp if a non-ramp scenario is explicitly run
+        if scenario == "baseline":
+            self.clear_ramp()
+
         run_id = f"run-{uuid.uuid4().hex[:8]}"
 
         # 1. Generate deterministic measurements
@@ -110,6 +163,7 @@ class HopTraceEngine:
             severity=severity,
             missing_link_ids=missing_link_ids,
             ambiguous_link_ids=ambiguous_link_ids,
+            ramp_progress=ramp_progress,
         )
 
         # Store run measurements
@@ -207,6 +261,7 @@ def run_scenario(
     missing_link_ids: Optional[List[str]] = None,
     ambiguous_link_ids: Optional[List[str]] = None,
     force_in_memory: bool = False,
+    ramp_progress: float = 0.0,
 ) -> ScenarioRunResponse:
     return get_engine().run_scenario(
         scenario=scenario,
@@ -216,6 +271,7 @@ def run_scenario(
         missing_link_ids=missing_link_ids,
         ambiguous_link_ids=ambiguous_link_ids,
         force_in_memory=force_in_memory,
+        ramp_progress=ramp_progress,
     )
 
 
