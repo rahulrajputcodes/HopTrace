@@ -82,7 +82,7 @@ export default function NetworkView() {
             <span>Graph</span>
           </button>
         </div>
-        <div className="text-[11px] text-slate-400 hidden sm:block">
+        <div className="text-xs text-slate-400 hidden sm:block">
           {view === 'map' ? 'Geographic layout' : 'Schematic topology'}
         </div>
       </div>

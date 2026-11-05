@@ -72,10 +72,10 @@ export default function BusinessImpactPanel() {
           <span className="text-amber-400 text-base">💼</span>
           <div>
             <div className="text-white font-semibold text-sm leading-tight">Business & Revenue Impact</div>
-            <div className="text-slate-400 text-[11px]">SLA compensation & subscriber revenue monitor</div>
+            <div className="text-slate-400 text-xs">SLA compensation & subscriber revenue monitor</div>
           </div>
         </div>
-        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
+        <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded border ${
           activeIncident ? 'bg-red-950/80 border-red-700 text-red-300' : 'bg-emerald-950/80 border-emerald-700 text-emerald-300'
         }`}>
           {activeIncident ? 'Outage Active' : 'All Clear'}
@@ -92,13 +92,13 @@ export default function BusinessImpactPanel() {
               ? 'bg-red-950/30 border-red-800'
               : 'bg-slate-900/40 border-slate-800'
           }`}>
-            <span className="text-[10px] text-slate-400 uppercase font-medium">Revenue at Risk</span>
+            <span className="text-xs text-slate-400 uppercase font-medium">Revenue at Risk</span>
             <div className={`text-xl font-bold mt-0.5 ${
               impactData?.revenue_at_risk > 0 ? 'text-red-400' : 'text-emerald-400'
             }`}>
               ₹{(impactData?.revenue_at_risk ?? 0).toLocaleString('en-IN')}
             </div>
-            <span className="text-[10px] text-slate-500">
+            <span className="text-xs text-slate-500">
               {impactData?.affected_count ? `${impactData.affected_count} household(s) down` : '100% Protected'}
             </span>
           </div>
@@ -109,13 +109,13 @@ export default function BusinessImpactPanel() {
               ? 'bg-amber-950/30 border-amber-800'
               : 'bg-slate-900/40 border-slate-800'
           }`}>
-            <span className="text-[10px] text-slate-400 uppercase font-medium">SLA Credit Owed</span>
+            <span className="text-xs text-slate-400 uppercase font-medium">SLA Credit Owed</span>
             <div className={`text-xl font-bold mt-0.5 ${
               impactData?.estimated_sla_credit_owed > 0 ? 'text-amber-400' : 'text-slate-300'
             }`}>
               ₹{(impactData?.estimated_sla_credit_owed ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <span className="text-[10px] text-slate-500">
+            <span className="text-xs text-slate-500">
               {impactData?.outage_duration_formatted ? `Duration: ${impactData.outage_duration_formatted}` : 'Zero penalty'}
             </span>
           </div>
@@ -131,11 +131,11 @@ export default function BusinessImpactPanel() {
             <div className="grid grid-cols-3 gap-2 pt-1">
               {Object.entries(impactData.households_by_village).map(([village, count]) => (
                 <div key={village} className="bg-slate-950/70 p-2 rounded border border-slate-800 text-center">
-                  <div className="text-[11px] text-slate-400 truncate">{village}</div>
+                  <div className="text-xs text-slate-400 truncate">{village}</div>
                   <div className={`text-base font-bold mt-0.5 ${count > 0 ? 'text-red-400' : 'text-slate-500'}`}>
                     {count}
                   </div>
-                  <div className="text-[9px] text-slate-500">households</div>
+                  <div className="text-xs text-slate-500">households</div>
                 </div>
               ))}
             </div>
@@ -145,23 +145,23 @@ export default function BusinessImpactPanel() {
           <div className="p-3 bg-slate-900/40 rounded-lg border border-slate-800/80 space-y-2">
             <div className="flex items-center justify-between text-xs text-slate-400 font-medium">
               <span>Village Coverage (Healthy)</span>
-              <span className="text-emerald-400 text-[11px]">₹{totalMRR.toLocaleString('en-IN')} Total MRR</span>
+              <span className="text-emerald-400 text-xs">₹{totalMRR.toLocaleString('en-IN')} Total MRR</span>
             </div>
             <div className="grid grid-cols-3 gap-2 pt-0.5">
               <div className="bg-slate-950/50 p-2 rounded border border-slate-800 text-center">
-                <div className="text-[10px] text-slate-400">Rampur</div>
+                <div className="text-xs text-slate-400">Rampur</div>
                 <div className="text-sm font-bold text-emerald-400 mt-0.5">7 Subs</div>
-                <div className="text-[9px] text-slate-500">100% Up</div>
+                <div className="text-xs text-slate-500">100% Up</div>
               </div>
               <div className="bg-slate-950/50 p-2 rounded border border-slate-800 text-center">
-                <div className="text-[10px] text-slate-400">Bhatpur</div>
+                <div className="text-xs text-slate-400">Bhatpur</div>
                 <div className="text-sm font-bold text-emerald-400 mt-0.5">6 Subs</div>
-                <div className="text-[9px] text-slate-500">100% Up</div>
+                <div className="text-xs text-slate-500">100% Up</div>
               </div>
               <div className="bg-slate-950/50 p-2 rounded border border-slate-800 text-center">
-                <div className="text-[10px] text-slate-400">Daulatpur</div>
+                <div className="text-xs text-slate-400">Daulatpur</div>
                 <div className="text-sm font-bold text-emerald-400 mt-0.5">7 Subs</div>
-                <div className="text-[9px] text-slate-500">100% Up</div>
+                <div className="text-xs text-slate-500">100% Up</div>
               </div>
             </div>
           </div>
@@ -177,7 +177,7 @@ export default function BusinessImpactPanel() {
               <button
                 onClick={handleBulkReminders}
                 disabled={bulkSending}
-                className="text-[11px] px-2 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium rounded transition-colors flex items-center gap-1"
+                className="text-xs px-2 py-1 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium rounded transition-colors flex items-center gap-1"
               >
                 {bulkSending ? 'Sending...' : '📢 Remind All'}
               </button>
@@ -193,7 +193,7 @@ export default function BusinessImpactPanel() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-white font-medium truncate">{sub.display_name}</div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                      <div className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5">
                         <span className="text-amber-300">₹{sub.plan_price}/mo</span>
                         <span>·</span>
                         <span>{sub.plan}</span>
@@ -204,7 +204,7 @@ export default function BusinessImpactPanel() {
                     <button
                       onClick={() => handleSendReminder(sub.id)}
                       disabled={state === 'sending'}
-                      className={`text-[10px] px-2 py-1 rounded font-medium shrink-0 transition-colors ${
+                      className={`text-xs px-2 py-1 rounded font-medium shrink-0 transition-colors ${
                         state === 'sent'
                           ? 'bg-emerald-900/60 border border-emerald-600 text-emerald-300'
                           : state === 'error'
@@ -225,7 +225,7 @@ export default function BusinessImpactPanel() {
           <div className="p-4 text-center bg-slate-900/30 rounded-lg border border-slate-800/60">
             <div className="text-2xl mb-1">🛡️</div>
             <div className="text-emerald-400 text-xs font-semibold">Zero Revenue at Risk</div>
-            <div className="text-slate-500 text-[11px] mt-0.5">
+            <div className="text-slate-500 text-xs mt-0.5">
               All 20 village households and commercial kiranas are receiving service normally.
             </div>
           </div>

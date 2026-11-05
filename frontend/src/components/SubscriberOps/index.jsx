@@ -29,7 +29,7 @@ function QRModal({ subscriber, onClose }) {
           <div className="text-center text-xs text-gray-600 break-all">
             <div className="text-2xl mb-2">📱</div>
             UPI QR<br/>
-            <span className="text-[9px]">hoptrace.gramin@sbi</span>
+            <span className="text-xs">hoptrace.gramin@sbi</span>
           </div>
         </div>
         <div className="text-emerald-400 font-bold text-2xl mb-1">₹{plan.price}</div>
@@ -151,7 +151,7 @@ export default function SubscriberOps() {
                           {isAffected && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0"/>}
                           <div>
                             <div className="text-slate-200 font-medium whitespace-nowrap">{sub.display_name || sub.id}</div>
-                            <div className="text-slate-500 text-[10px]">{sub.id}</div>
+                            <div className="text-slate-500 text-xs">{sub.id}</div>
                           </div>
                         </div>
                       </td>
@@ -159,7 +159,7 @@ export default function SubscriberOps() {
                       <td className="px-3 py-2 text-slate-400">{getSubscriberAp(sub)}</td>
                       <td className="px-3 py-2">
                         <span
-                          className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"
+                          className="px-1.5 py-0.5 rounded text-xs font-medium whitespace-nowrap"
                           style={{
                             background: (PLAN_META[sub.plan]?.color || '#64748b') + '22',
                             color: PLAN_META[sub.plan]?.color || '#94a3b8',
@@ -169,7 +169,7 @@ export default function SubscriberOps() {
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded border text-[10px] font-medium capitalize whitespace-nowrap ${PAYMENT_BADGE[sub.payment_status] || 'bg-slate-800 border-slate-600 text-slate-400'}`}>
+                        <span className={`px-1.5 py-0.5 rounded border text-xs font-medium capitalize whitespace-nowrap ${PAYMENT_BADGE[sub.payment_status] || 'bg-slate-800 border-slate-600 text-slate-400'}`}>
                           {sub.payment_status || '—'}
                         </span>
                       </td>
@@ -179,7 +179,7 @@ export default function SubscriberOps() {
                             onClick={() => handleReminder(sub)}
                             disabled={reminder === 'sending' || reminder === 'sent'}
                             title="Send payment reminder"
-                            className={`px-2 py-1 rounded text-[10px] font-medium transition-colors disabled:opacity-50 ${
+                            className={`px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
                               reminder === 'sent'  ? 'bg-emerald-900 text-emerald-300' :
                               reminder === 'error' ? 'bg-red-900 text-red-300' :
                               'bg-slate-700 hover:bg-slate-600 text-slate-300'
@@ -190,7 +190,7 @@ export default function SubscriberOps() {
                           <button
                             onClick={() => setUpiModal(sub)}
                             title="UPI payment QR"
-                            className="px-2 py-1 bg-emerald-900 hover:bg-emerald-800 text-emerald-300 rounded text-[10px] transition-colors"
+                            className="px-2 py-1 bg-emerald-900 hover:bg-emerald-800 text-emerald-300 rounded text-xs transition-colors"
                           >
                             ₹QR
                           </button>
@@ -199,7 +199,7 @@ export default function SubscriberOps() {
                               href={getWALink(sub)}
                               target="_blank" rel="noopener noreferrer"
                               title="WhatsApp outage notice"
-                              className="px-2 py-1 bg-green-900 hover:bg-green-800 text-green-300 rounded text-[10px] transition-colors"
+                              className="px-2 py-1 bg-green-900 hover:bg-green-800 text-green-300 rounded text-xs transition-colors"
                             >
                               WA
                             </a>
@@ -224,7 +224,7 @@ export default function SubscriberOps() {
         {/* Billing sidebar (business mode) */}
         {dashboardMode === 'business' && (
           <div className="p-4 space-y-3">
-            <div className="text-[10px] text-slate-500 font-medium uppercase">Billing Overview</div>
+            <div className="text-xs text-slate-500 font-medium uppercase">Billing Overview</div>
             <div>
               <div className="text-2xl font-bold text-white">₹{totalMRR.toLocaleString('en-IN')}</div>
               <div className="text-xs text-slate-500">Monthly Recurring Revenue</div>

@@ -72,7 +72,7 @@ function NetworkNode({ data }) {
         }}
       >
         <span className="text-lg leading-none">{meta.icon}</span>
-        <span className="text-white text-[10px] font-bold leading-tight text-center">{data.label}</span>
+        <span className="text-white text-xs font-bold leading-tight text-center">{data.label}</span>
         <span
           className={`w-2 h-2 rounded-full ${
             data.status === 'healthy' ? 'bg-emerald-400' :
@@ -83,7 +83,7 @@ function NetworkNode({ data }) {
       </div>
       {data.village && (
         <div
-          className="mt-0.5 px-1.5 py-px rounded text-[8px] font-semibold"
+          className="mt-0.5 px-1.5 py-px rounded text-xs font-semibold"
           style={{ background: vColor + '22', color: vColor, border: `1px solid ${vColor}44` }}
         >
           {data.village}
@@ -170,15 +170,15 @@ export default function TopologyCanvas() {
       {/* Legend */}
       <div className="absolute top-2 left-2 z-10 flex flex-col gap-1 bg-[#0a1628]/90 rounded-lg p-2 border border-slate-800 pointer-events-none">
         {Object.entries(NODE_TYPES_META).map(([type, m]) => (
-          <div key={type} className="flex items-center gap-1.5 text-[9px] text-slate-400">
+          <div key={type} className="flex items-center gap-1.5 text-xs text-slate-400">
             <span className="text-xs">{m.icon}</span>
             <span>{m.label}</span>
           </div>
         ))}
         <div className="border-t border-slate-700 mt-1 pt-1 space-y-0.5">
-          <div className="text-[9px] text-slate-500 font-medium uppercase">Risk</div>
+          <div className="text-xs text-slate-500 font-medium uppercase">Risk</div>
           {[['Low','#10b981'],['Med','#f59e0b'],['High','#f97316'],['Crit','#ef4444']].map(([l,c]) => (
-            <div key={l} className="flex items-center gap-1.5 text-[9px] text-slate-400">
+            <div key={l} className="flex items-center gap-1.5 text-xs text-slate-400">
               <span className="w-4 h-0.5 rounded" style={{ background: c }} />
               <span>{l}</span>
             </div>
@@ -187,7 +187,7 @@ export default function TopologyCanvas() {
       </div>
 
       {/* Source badge */}
-      <div className="absolute top-2 right-12 z-10 px-2 py-1 bg-[#0a1628]/90 rounded-lg border border-slate-700 text-[10px] text-slate-400 pointer-events-none flex items-center gap-1.5">
+      <div className="absolute top-2 right-12 z-10 px-2 py-1 bg-[#0a1628]/90 rounded-lg border border-slate-700 text-xs text-slate-400 pointer-events-none flex items-center gap-1.5">
         <span className={`w-1.5 h-1.5 rounded-full ${(liveMeasurements || []).some(m => m.data_source === 'live') || topology.data_source === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
         <span>{topology.nodes?.length ?? 0} nodes · {topology.links?.length ?? 0} links · {(liveMeasurements || []).some(m => m.data_source === 'live') || topology.data_source === 'live' ? 'live' : (topology.data_source || 'simulated')}</span>
       </div>
