@@ -171,3 +171,28 @@ def test_auto_dispatch_during_lab_run_with_console_provider(
 
     if run_data.get("incident") and run_data.get("affected_count", 0) > 0:
         assert len(console.sent_messages) > start_count
+
+
+def test_notification_status_unavailable_by_default(client: TestClient) -> None:
+    """Default status check reports unavailable and helpful diagnostic reason."""
+    response = client.get("/api/v1/notifications/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is False
+    assert "not configured" in data["reason"].lower() or "unavailable" in data["reason"].lower()
+
+
+def test_notification_status_available_when_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Status reports available when both notification and explanation providers are configured."""
+    monkeypatch.setattr(settings, "notification_provider", "console")
+    monkeypatch.setattr(settings, "explanation_provider", "simulated")
+
+    response = client.get("/api/v1/notifications/status")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["available"] is True
+    assert data["provider"] == "console"
+    assert data["reason"] is None
+

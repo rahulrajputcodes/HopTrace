@@ -384,6 +384,40 @@ def preview_incident_notifications(
     )
 
 
+@router.get(
+    "/notifications/status",
+    summary="Check outage notification provider status",
+    description="Returns current notification provider availability and configuration detail.",
+)
+def get_notification_provider_status() -> dict[str, Any]:
+    try:
+        notif_provider = get_notification_provider()
+        if notif_provider.provider_name == "unavailable":
+            return {
+                "available": False,
+                "provider": notif_provider.provider_name,
+                "reason": "Outage notification provider is not configured. Set NOTIFICATION_PROVIDER=console or twilio.",
+            }
+        expl_provider = get_explanation_provider()
+        if expl_provider.provider_name == "unavailable":
+            return {
+                "available": False,
+                "provider": notif_provider.provider_name,
+                "reason": "Explanation provider is not configured. Set EXPLANATION_PROVIDER=simulated or sarvam.",
+            }
+        return {
+            "available": True,
+            "provider": notif_provider.provider_name,
+            "reason": None,
+        }
+    except Exception as exc:
+        return {
+            "available": False,
+            "provider": "unavailable",
+            "reason": str(exc),
+        }
+
+
 @router.post(
     "/incidents/{incident_id}/notify",
     response_model=NotificationSendResponse,

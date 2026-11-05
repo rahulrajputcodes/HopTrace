@@ -153,6 +153,25 @@ export function useApi() {
     return api(`/incidents/${incidentId}/business-impact`);
   }, []);
 
+  const fetchNotificationStatus = useCallback(async () => {
+    try {
+      return await api('/notifications/status');
+    } catch {
+      return {
+        available: false,
+        provider: 'unavailable',
+        reason: 'Outage notification provider is not configured. Set NOTIFICATION_PROVIDER=console or twilio.',
+      };
+    }
+  }, []);
+
+  const notifyIncident = useCallback(async (incidentId, channel = 'sms') => {
+    return api(`/incidents/${incidentId}/notify`, {
+      method: 'POST',
+      body: JSON.stringify({ channel }),
+    });
+  }, []);
+
   return {
     fetchAll,
     runScenario,
@@ -162,5 +181,7 @@ export function useApi() {
     fetchLinkHistory,
     fetchRiskSnapshot,
     fetchBusinessImpact,
+    fetchNotificationStatus,
+    notifyIncident,
   };
 }
