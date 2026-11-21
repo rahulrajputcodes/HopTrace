@@ -189,8 +189,29 @@ def send_incident_notifications(
     db: sqlite3.Connection = Depends(get_db),
     adapter: DependencyAnalysisAdapter = Depends(get_dependency_adapter),
 ) -> NotificationSendResponse:
-    # 1. Idempotency Key (generates safe default if header not provided by legacy caller)
-    clean_idempotency_key = (idempotency_key or "").strip() or f"auto-{uuid4().hex}"
+    # 1. Idempotency Key — required for Twilio; auto-generated for console/sandbox
+    #    Peek at the provider config to determine if Twilio is active.
+    #    If the provider is misconfigured it will raise; we catch and 503 below.
+    _is_twilio = False
+    try:
+        _peek_provider = get_notification_provider()
+        _is_twilio = _peek_provider.provider_name == "twilio"
+    except NotificationProviderUnavailableError:
+        # Misconfigured provider — will be caught properly at step 3 below.
+        pass
+
+    clean_idempotency_key = (idempotency_key or "").strip()
+    if _is_twilio and not clean_idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Idempotency-Key header is required for Twilio sends. "
+                "Supply a unique key per send attempt to prevent duplicate messages."
+            ),
+        )
+    if not clean_idempotency_key:
+        # Console/sandbox: safe to auto-generate
+        clean_idempotency_key = f"auto-{uuid4().hex}"
 
     # 2. Verify incident exists
     incident = _get_active_incident(incident_id, db)
@@ -225,26 +246,7 @@ def send_incident_notifications(
     req_kind = (payload.kind if payload else "outage") or "outage"
     use_trans = payload.translate if payload else False
 
-    # 4. Check idempotency: if batch exists with this (incident_id, idempotency_key), return it
-    existing_batch = get_notification_batch_by_idempotency(db, incident_id, clean_idempotency_key)
-    if existing_batch is not None:
-        deliveries = existing_batch.get("deliveries", [])
-        sent_c = sum(1 for d in deliveries if d.get("status") in ("sent", "delivered"))
-        failed_c = sum(1 for d in deliveries if d.get("status") == "failed")
-        return NotificationSendResponse(
-            incident_id=incident_id,
-            provider=existing_batch.get("provider", notif_provider.provider_name),
-            channel=existing_batch.get("channel", req_channel),
-            total_targeted=len(deliveries),
-            sent_count=sent_c,
-            failed_count=failed_c,
-            deliveries=[NotificationDeliveryItem(**d) for d in deliveries],
-            deduplicated=True,
-            batch_id=existing_batch.get("id"),
-            kind=existing_batch.get("kind", req_kind),
-        )
-
-    # 5. Determine affected subscribers
+    # 4. Determine affected subscribers BEFORE attempting the atomic batch insert
     try:
         raw_subs = adapter.get_affected_subscribers(
             incident_id=incident_id,
@@ -260,7 +262,7 @@ def send_incident_notifications(
 
     affected_sub_ids = {s["id"] for s in raw_subs if "id" in s}
 
-    # 6. Validate subscriber selection
+    # 5. Validate subscriber selection (before we touch the DB)
     if payload and payload.subscriber_ids is not None:
         target_ids = set(payload.subscriber_ids)
         unrelated = target_ids - affected_sub_ids
@@ -279,7 +281,54 @@ def send_incident_notifications(
     else:
         enriched_subs = raw_subs
 
-    # 7. Dispatch notifications
+    # 6. ATOMICALLY insert the batch FIRST (before dispatching) so the DB
+    #    UNIQUE(incident_id, idempotency_key) constraint is the authoritative
+    #    concurrency guard.  If a concurrent request already inserted the same
+    #    key, the INSERT raises IntegrityError and we return the existing batch.
+    now_iso = datetime.now(timezone.utc).isoformat()
+    batch_id = f"batch-{uuid4().hex[:12]}"
+
+    try:
+        create_notification_batch(
+            db,
+            {
+                "id": batch_id,
+                "incident_id": incident_id,
+                "kind": req_kind,
+                "channel": req_channel,
+                "provider": notif_provider.provider_name,
+                "idempotency_key": clean_idempotency_key,
+                "created_by": "operator",
+                "created_at": now_iso,
+            },
+        )
+        db.commit()
+    except sqlite3.IntegrityError:
+        # Duplicate batch — concurrent or repeated request; return existing batch
+        db.rollback()
+        existing_batch = get_notification_batch_by_idempotency(db, incident_id, clean_idempotency_key)
+        if existing_batch is not None:
+            deliveries = existing_batch.get("deliveries", [])
+            sent_c = sum(1 for d in deliveries if d.get("status") in ("sent", "delivered"))
+            failed_c = sum(1 for d in deliveries if d.get("status") == "failed")
+            return NotificationSendResponse(
+                incident_id=incident_id,
+                provider=existing_batch.get("provider", notif_provider.provider_name),
+                channel=existing_batch.get("channel", req_channel),
+                total_targeted=len(deliveries),
+                sent_count=sent_c,
+                failed_count=failed_c,
+                deliveries=[NotificationDeliveryItem(**d) for d in deliveries],
+                deduplicated=True,
+                batch_id=existing_batch.get("id"),
+                kind=existing_batch.get("kind", req_kind),
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Idempotency constraint violated but existing batch not found.",
+        )
+
+    # 7. Dispatch notifications (batch row already committed above)
     dispatch_res = dispatch_outage_notifications(
         incident=incident,
         subscribers=enriched_subs,
@@ -289,24 +338,7 @@ def send_incident_notifications(
         use_translation=use_trans,
     )
 
-    # 8. Persist batch and deliveries in SQLite transaction
-    now_iso = datetime.now(timezone.utc).isoformat()
-    batch_id = f"batch-{uuid4().hex[:12]}"
-
-    create_notification_batch(
-        db,
-        {
-            "id": batch_id,
-            "incident_id": incident_id,
-            "kind": req_kind,
-            "channel": req_channel,
-            "provider": dispatch_res["provider"],
-            "idempotency_key": clean_idempotency_key,
-            "created_by": "operator",
-            "created_at": now_iso,
-        },
-    )
-
+    # 8. Persist delivery records and update batch provider from actual dispatch result
     delivery_records = []
     response_deliveries = []
     for d in dispatch_res["deliveries"]:
@@ -321,6 +353,7 @@ def send_incident_notifications(
             "status": d["status"],
             "message_id": d.get("message_id"),
             "error": d.get("error"),
+            "sandboxed": d.get("sandboxed", False),
             "updated_at": now_iso,
         }
         delivery_records.append(record)
@@ -516,11 +549,23 @@ def retry_failed_notifications(
     "/voice",
     response_model=VoiceResponse,
     summary="Synthesize alert message to voice audio (Sarvam AI)",
-    description="Synthesizes given text into base64 audio bytes via Sarvam AI text-to-speech. Returns 503 if unavailable.",
+    description=(
+        "Synthesizes given text (max 500 chars) into base64 WAV audio via Sarvam AI Bulbul TTS. "
+        "Returns 400 on invalid input, 503 when Sarvam is unavailable or returns an error."
+    ),
 )
 def synthesize_voice(
     payload: VoiceRequest,
 ) -> VoiceResponse:
+    # VoiceRequest schema enforces min_length=1 and max_length=500 via Pydantic.
+    # Explicit guard for empty/whitespace text after stripping.
+    clean_text = (payload.text or "").strip()
+    if not clean_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Voice text must be non-empty (after stripping whitespace).",
+        )
+
     api_key = settings.sarvam_api_key.strip()
     if not api_key:
         raise HTTPException(
@@ -536,11 +581,11 @@ def synthesize_voice(
     )
 
     lang_code = "hi-IN" if payload.language.lower().startswith("hi") else "en-IN"
-    speaker = payload.speaker or "meera"
+    speaker = (payload.speaker or "meera").strip().lower()
 
     try:
         audio_b64 = provider.generate_speech(
-            text=payload.text,
+            text=clean_text,
             language_code=lang_code,
             speaker=speaker,
         )
@@ -549,6 +594,12 @@ def synthesize_voice(
             mime="audio/wav",
             provider="sarvam",
         )
+    except ValueError as exc:
+        # Input validation errors (empty text, invalid speaker)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

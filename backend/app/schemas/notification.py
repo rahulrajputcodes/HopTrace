@@ -42,7 +42,7 @@ class NotificationSendRequest(BaseModel):
 class NotificationDeliveryItem(BaseModel):
     subscriber_id: str = Field(..., description="Target subscriber ID")
     recipient: str = Field(..., description="Recipient phone number")
-    status: str = Field(..., description="Delivery status ('queued', 'sent', 'delivered', 'failed')")
+    status: str = Field(..., description="Delivery status ('queued', 'sent', 'delivered', 'failed', 'sandboxed')")
     message_id: Optional[str] = Field(None, description="External or internal message tracking ID")
     channel: str = Field("sms", description="Channel used ('sms' or 'whatsapp')")
     provider: str = Field("console", description="Provider used ('console', 'twilio')")
@@ -52,6 +52,7 @@ class NotificationDeliveryItem(BaseModel):
     updated_at: Optional[str] = Field(None, description="Timestamp of delivery attempt")
     subscriber_name: Optional[str] = Field(None, description="Subscriber display name")
     language: Optional[str] = Field(None, description="Language used")
+    sandboxed: bool = Field(False, description="True when delivery was routed to sandbox (not a live send)")
 
 
 class NotificationSendResponse(BaseModel):

@@ -257,53 +257,6 @@ export function useApi() {
     }
   }, [store]);
 
-  // ── M3: Notification API Helpers ─────────────────────────────────────────
-  const fetchNotificationPreview = useCallback(async (incidentId, { channel = 'sms', kind = 'outage', translate = false } = {}) => {
-    return api(`/incidents/${incidentId}/notifications/preview?channel=${channel}&kind=${kind}&translate=${translate}`);
-  }, []);
-
-  const sendNotifications = useCallback(async (incidentId, payload, idempotencyKey) => {
-    const headers = {};
-    if (idempotencyKey) {
-      headers['Idempotency-Key'] = idempotencyKey;
-    }
-    return api(`/incidents/${incidentId}/notify`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
-  }, []);
-
-  const fetchNotificationHistory = useCallback(async (incidentId) => {
-    return api(`/incidents/${incidentId}/notifications`);
-  }, []);
-
-  const retryNotifications = useCallback(async (incidentId, payload = {}) => {
-    return api(`/incidents/${incidentId}/notifications/retry`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  }, []);
-
-  const fetchNotificationStatus = useCallback(async () => {
-    try {
-      return await api('/notifications/status');
-    } catch {
-      return {
-        available: false,
-        provider: 'unavailable',
-        reason: 'Outage notification provider is not configured. Set NOTIFICATION_PROVIDER=console or twilio.',
-      };
-    }
-  }, []);
-
-  const synthesizeVoice = useCallback(async (text, language = 'hi', speaker = 'meera') => {
-    return api('/voice', {
-      method: 'POST',
-      body: JSON.stringify({ text, language, speaker }),
-    });
-  }, []);
-
   return {
     fetchAll,
     runScenario,
@@ -316,11 +269,5 @@ export function useApi() {
     fetchAgentStatus,
     runPathProbe,
     notifyIncident,
-    fetchNotificationPreview,
-    sendNotifications,
-    fetchNotificationHistory,
-    retryNotifications,
-    fetchNotificationStatus,
-    synthesizeVoice,
   };
 }

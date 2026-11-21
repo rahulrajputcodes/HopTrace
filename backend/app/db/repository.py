@@ -590,6 +590,7 @@ def get_notification_deliveries(
         """
         SELECT d.id, d.batch_id, d.subscriber_id, d.language, d.message, d.message_source,
                d.status, d.message_id, d.error, d.updated_at,
+               COALESCE(d.sandboxed, 0) as sandboxed,
                b.channel, b.provider,
                s.display_name as subscriber_name, COALESCE(s.phone, '') as recipient
         FROM notification_deliveries d
@@ -601,7 +602,13 @@ def get_notification_deliveries(
         (batch_id,),
     )
     rows = cursor.fetchall()
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        row_dict = dict(r)
+        # Normalize SQLite integer to Python bool
+        row_dict["sandboxed"] = bool(row_dict.get("sandboxed", 0))
+        result.append(row_dict)
+    return result
 
 
 def list_notification_batches_by_incident(
@@ -654,12 +661,15 @@ def create_notification_deliveries(
     conn.executemany(
         """
         INSERT INTO notification_deliveries (
-            id, batch_id, subscriber_id, language, message, message_source, status, message_id, error, updated_at
+            id, batch_id, subscriber_id, language, message, message_source, status, message_id, error, sandboxed, updated_at
         ) VALUES (
-            :id, :batch_id, :subscriber_id, :language, :message, :message_source, :status, :message_id, :error, :updated_at
+            :id, :batch_id, :subscriber_id, :language, :message, :message_source, :status, :message_id, :error, :sandboxed, :updated_at
         );
         """,
-        deliveries,
+        [
+            {**d, "sandboxed": int(bool(d.get("sandboxed", False)))}
+            for d in deliveries
+        ],
     )
 
 
