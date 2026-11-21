@@ -1,16 +1,16 @@
-# HopTrace Backend Dockerfile
-FROM python:3.11-slim
+# HopTrace Backend Production Dockerfile
+FROM python:3.11.10-slim
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    SQLITE_DB_PATH=/app/data/hoptrace.db
 
-# Install system dependencies for healthcheck
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Create non-root system user and group
+RUN groupadd -g 10001 hoptrace && \
+    useradd -u 10001 -g hoptrace -s /bin/bash -m hoptrace
 
 # Install Python dependencies
 COPY requirements.txt .
@@ -19,21 +19,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend source code
 COPY . /app/
 
-# Sensible default environment variables for judges
-ENV TOPOLOGY_PROVIDER=engine \
-    DEPENDENCY_ADAPTER=engine \
-    EXPLANATION_PROVIDER=simulated \
-    NOTIFICATION_PROVIDER=console \
-    SQLITE_DB_PATH=/app/data/hoptrace.db \
-    INGEST_RETENTION_RUNS=1000 \
-    CORS_ORIGINS="http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://frontend:5173"
+# Create directory for SQLite persistence and grant ownership to non-root user
+RUN mkdir -p /app/data && \
+    chown -R hoptrace:hoptrace /app /app/data
 
-# Create directory for SQLite persistence
-RUN mkdir -p /app/data
+USER hoptrace
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+# Healthcheck using Python standard library (no curl needed in slim image)
+HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).getcode() == 200 else 1)"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

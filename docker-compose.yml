@@ -6,24 +6,26 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: hoptrace-backend
-    ports:
-      - "8000:8000"
     environment:
-      - TOPOLOGY_PROVIDER=engine
-      - DEPENDENCY_ADAPTER=engine
-      - EXPLANATION_PROVIDER=simulated
-      - NOTIFICATION_PROVIDER=console
+      - DATA_MODE=${DATA_MODE:-demo}
+      - TOPOLOGY_PROVIDER=${TOPOLOGY_PROVIDER:-engine}
+      - DEPENDENCY_ADAPTER=${DEPENDENCY_ADAPTER:-engine}
+      - EXPLANATION_PROVIDER=${EXPLANATION_PROVIDER:-unavailable}
+      - NOTIFICATION_PROVIDER=${NOTIFICATION_PROVIDER:-console}
       - SQLITE_DB_PATH=/app/data/hoptrace.db
-      - INGEST_RETENTION_RUNS=1000
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
+      - SEED_DEMO_SUBSCRIBERS=${SEED_DEMO_SUBSCRIBERS:-true}
+      - SEED_DEMO_INCIDENTS=${SEED_DEMO_INCIDENTS:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:8080,http://127.0.0.1}
+      - SARVAM_API_KEY=${SARVAM_API_KEY:-}
+      - INGEST_API_KEY=${INGEST_API_KEY:-}
     volumes:
       - hoptrace_data:/app/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-      start_period: 5s
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).getcode() == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
 
   frontend:
@@ -32,7 +34,7 @@ services:
       dockerfile: Dockerfile
     container_name: hoptrace-frontend
     ports:
-      - "5173:80"
+      - "${PORT:-80}:8080"
     depends_on:
       backend:
         condition: service_healthy
