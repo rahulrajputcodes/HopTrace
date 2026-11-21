@@ -53,7 +53,7 @@ export default function KPIRibbon() {
   const villageHealthColor = (h) =>
     h === 'healthy' ? 'bg-emerald-400' : h === 'degraded' ? 'bg-amber-400' : 'bg-red-500';
 
-  // ── Calculate link freshness and KPI health ─────────────────────────────
+  // -- Calculate link freshness and KPI health --
   const rawLinks = topology?.links || [];
   const liveMap = new Map();
   (liveMeasurements || []).forEach(m => {
@@ -89,15 +89,15 @@ export default function KPIRibbon() {
         needsAttention={affectedCount > 0}
         title="Active Connections"
         value={`${activeSubs} / ${totalSubs}`}
-        sub={affectedCount > 0 ? `⚠ ${affectedCount} subscriber(s) impacted` : '100% Village coverage active'}
+        sub={affectedCount > 0 ? `\u26A0 ${affectedCount} subscriber(s) impacted` : '100% Village coverage active'}
       />
 
       {/* MRR */}
       <KPICard
         statusDot="bg-emerald-400"
         title="Monthly Revenue (MRR)"
-        value={`₹${mrr.toLocaleString('en-IN')}`}
-        sub={`${collectionRate}% collected · ${paidCount} paid`}
+        value={`\u20B9${mrr.toLocaleString('en-IN')}`}
+        sub={`${collectionRate}% collected \u00B7 ${paidCount} paid`}
       />
 
       {/* Village status & Link Health */}
@@ -108,8 +108,8 @@ export default function KPIRibbon() {
         value={`${healthyPercent}% Healthy`}
         sub={
           noDataCount > 0
-            ? `${noDataCount} No Data · ${healthyLinksWithData.length}/${linksWithData.length} monitored`
-            : `${healthyVillageCount}/${villageStatuses.length} Villages · ${healthyLinksWithData.length}/${linksWithData.length || 14} links ok`
+            ? `${noDataCount} No Data \u00B7 ${healthyLinksWithData.length}/${linksWithData.length} monitored`
+            : `${healthyVillageCount}/${villageStatuses.length} Villages \u00B7 ${healthyLinksWithData.length}/${linksWithData.length || 14} links ok`
         }
       >
         <div className="flex items-center justify-between gap-1 mt-0.5 flex-wrap">
@@ -140,8 +140,8 @@ export default function KPIRibbon() {
         }
         sub={
           activeIncident
-            ? `${Math.round((activeIncident.confidence_score || 0.9) * 100)}% confidence${cascadeDetected ? ' � CASCADE' : ''}`
-            : `Zero open incidents � ${flappingLinks.length > 0 ? flappingLinks.length + ' flapping' : 'All stable'}`
+            ? `${Math.round((activeIncident.confidence_score || 0.9) * 100)}% confidence${cascadeDetected ? ' \u00B7 CASCADE' : ''}`
+            : `Zero open incidents \u00B7 ${flappingLinks.length > 0 ? flappingLinks.length + ' flapping' : 'All stable'}`
         }
       />
     </div>

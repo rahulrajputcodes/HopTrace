@@ -4,8 +4,8 @@ FROM node:20.19.0-alpine AS frontend-builder
 
 WORKDIR /build
 
-COPY frontend/package*.json ./
-RUN npm install --no-audit --no-fund
+COPY frontend/package.json ./
+RUN rm -f package-lock.json && npm install --no-audit --no-fund --include=optional && npm install --no-save --no-audit --no-fund @rolldown/binding-linux-x64-musl || true
 
 COPY frontend/ ./
 RUN npm run build
