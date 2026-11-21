@@ -5,14 +5,20 @@ Ensures:
 - Tests run against isolated temporary SQLite databases.
 - The developer's real database is never touched.
 - Dependency overrides are safely scoped and cleaned up.
+- AUTH_DISABLED=true defaults across all test runs so existing test suite remains green.
 """
 from __future__ import annotations
+
+import os
+os.environ["AUTH_DISABLED"] = "true"
 
 from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
+settings.auth_disabled = True
+
 from app.db.connection import get_db, get_db_connection
 from app.db.init import init_db
 from app.main import app
@@ -24,8 +30,17 @@ def configure_session_test_db(tmp_path_factory) -> str:
     temp_dir = tmp_path_factory.mktemp("session_db")
     test_db_file = str(temp_dir / "hoptrace_test_session.db")
     settings.sqlite_db_path = test_db_file
+    settings.auth_disabled = True
     init_db(test_db_file, seed_demo=True)
     return test_db_file
+
+
+@pytest.fixture(autouse=True)
+def ensure_auth_disabled_default() -> Generator[None, None, None]:
+    """Ensure auth_disabled defaults to True for each test unless explicitly monkeypatched."""
+    settings.auth_disabled = True
+    yield
+    settings.auth_disabled = True
 
 
 @pytest.fixture

@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     # --- API ---
     app_version: str = "0.1.0"
 
+    # --- M2 Auth & RBAC ---
+    auth_disabled: bool = False
+    auth_secret: str = ""
+    auth_token_expire_minutes: int = 1440
+    operator_password: str = ""
+    viewer_password: str = ""
+    evaluator_password: str = ""
+    login_rate_limit_per_minute: int = 10
+
     # --- CORS ---
     # Comma-separated list of allowed origins for CORS.
     # Default: only the local Vite dev server used by Member 3 (frontend).
