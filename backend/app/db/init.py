@@ -9,6 +9,8 @@ import sqlite3
 from typing import Any
 
 from app.db.connection import get_db_connection
+# M3: Notification persistence schema
+from app.db.notify_schema import ensure_notify_tables
 
 # ── DDL ──────────────────────────────────────────────────────────────────────
 
@@ -200,6 +202,8 @@ def init_db(
     conn = get_db_connection(db_path)
     try:
         conn.executescript(SCHEMA_SQL)
+        # M3: Ensure notification persistence schema
+        ensure_notify_tables(conn)
         try:
             conn.execute("ALTER TABLE subscribers ADD COLUMN plan_price REAL DEFAULT 399.0;")
         except sqlite3.OperationalError:
