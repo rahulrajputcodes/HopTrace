@@ -203,6 +203,11 @@ export function useApi() {
     }
   }, [store]);
 
+  // M4 SLA view
+  const fetchSla = useCallback(async (windowHours = 24) => {
+    return api(`/topology/sla?window_hours=${windowHours}`);
+  }, []);
+
   const runPathProbe = useCallback(async (failedNodeId = 'WB3') => {
     store.setLoading(true);
     try {
@@ -269,5 +274,6 @@ export function useApi() {
     fetchAgentStatus,
     runPathProbe,
     notifyIncident,
+    fetchSla,
   };
 }

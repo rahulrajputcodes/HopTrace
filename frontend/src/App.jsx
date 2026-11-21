@@ -18,6 +18,8 @@ import AlertOverlay from './components/AlertOverlay/AlertOverlay';
 // M4 walkthrough
 import Walkthrough from './components/Walkthrough/Walkthrough';
 import { hasSeenWalkthrough } from './components/Walkthrough/walkthroughPrefs';
+// M4 SLA view
+import SLAView from './components/SLAView';
 
 export default function App() {
   useLiveTelemetry();
@@ -99,6 +101,11 @@ export default function App() {
         {/* Full-width: Subscriber Ops */}
         <section className="col-span-12">
           <SubscriberOps />
+        </section>
+
+        {/* M4 SLA view */}
+        <section className="col-span-12">
+          <SLAView />
         </section>
       </main>
 
