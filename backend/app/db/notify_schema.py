@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS notification_deliveries (
     status TEXT NOT NULL,
     message_id TEXT,
     error TEXT,
+    sandboxed INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL
 );
 
@@ -48,6 +49,17 @@ def ensure_notify_tables(conn: sqlite3.Connection) -> None:
     """
     Ensure notification tables exist in SQLite idempotently.
     Safe to call repeatedly across restarts and tests.
+    Also applies additive column migrations for previously created tables.
     """
     conn.executescript(NOTIFY_SCHEMA_SQL)
+
+    # Additive migration: add sandboxed column if it does not yet exist
+    # (handles databases created before the sandboxed column was introduced)
+    cur = conn.execute("PRAGMA table_info(notification_deliveries);")
+    existing_cols = {row[1] for row in cur.fetchall()}
+    if "sandboxed" not in existing_cols:
+        conn.execute(
+            "ALTER TABLE notification_deliveries ADD COLUMN sandboxed INTEGER NOT NULL DEFAULT 0;"
+        )
+
     conn.commit()

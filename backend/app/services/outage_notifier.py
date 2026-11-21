@@ -17,6 +17,18 @@ from app.services.translate import translate
 
 logger = logging.getLogger(__name__)
 
+
+def _mask_phone(phone: str) -> str:
+    """Mask phone numbers before writing to logs."""
+    if not phone:
+        return "****"
+    cleaned = phone.strip()
+    if len(cleaned) <= 4:
+        return "****"
+    if cleaned.startswith("+") and len(cleaned) >= 7:
+        return f"{cleaned[:3]}****{cleaned[-4:]}"
+    return f"****{cleaned[-4:]}"
+
 AP_TO_VILLAGE: dict[str, str] = {
     "AP1": "Rampur",
     "AP2": "Rampur",
@@ -169,10 +181,16 @@ def dispatch_outage_notifications(
                 "message": msg,
                 "message_source": source,
                 "language": lang,
+                "sandboxed": res.get("sandboxed", False),
             })
             sent_count += 1
         except Exception as exc:
-            logger.error("Failed to deliver notification to %s: %s", sub_id, exc)
+            logger.error(
+                "Failed to deliver notification to subscriber %s (phone: %s): %s",
+                sub_id,
+                _mask_phone(recipient),
+                type(exc).__name__,
+            )
             deliveries.append({
                 "subscriber_id": sub_id,
                 "subscriber_name": sub_name,
@@ -184,6 +202,7 @@ def dispatch_outage_notifications(
                 "message": msg,
                 "message_source": source,
                 "language": lang,
+                "sandboxed": False,
             })
             failed_count += 1
 
