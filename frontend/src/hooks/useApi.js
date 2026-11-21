@@ -1,13 +1,44 @@
 import { useCallback } from 'react';
-import useStore from '../store/appStore';
+import useStore from '../store/appStore.js';
+import { useAuth } from '../store/authStore.js';
 
 const BASE = '/api/v1';
 
-async function api(path, opts = {}) {
+export async function publicApi(path, opts = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(opts.headers || {}),
+  };
   const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
     ...opts,
+    headers,
   });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function api(path, opts = {}) {
+  const token = useAuth.getState().token;
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(opts.headers || {}),
+  };
+
+  const res = await fetch(BASE + path, {
+    ...opts,
+    headers,
+  });
+
+  if (res.status === 401) {
+    useAuth.getState().logout();
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || 'Session expired. Please log in again.');
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.detail || `HTTP ${res.status}`);
