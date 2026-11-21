@@ -46,8 +46,12 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Tuple
 
-from backend.app.engine.models import Measurement
-from backend.app.engine.telemetry import BASELINE_TELEMETRY
+try:
+    from app.engine.models import Measurement
+    from app.engine.telemetry import BASELINE_TELEMETRY
+except ImportError:
+    from backend.app.engine.models import Measurement
+    from backend.app.engine.telemetry import BASELINE_TELEMETRY
 
 # ── Frozen Predictor Configuration (Tuned on Dev Seeds 0–99) ───────────────────
 # Tuned strictly on development seeds (0–99) and evaluated on untouched test seeds (1000–1199).

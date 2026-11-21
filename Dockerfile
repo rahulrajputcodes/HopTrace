@@ -34,6 +34,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend application source
 COPY backend/ /app/
+# Compatibility symlink for packages referencing backend.*
+RUN ln -s /app /app/backend
+
 
 # Copy compiled frontend from Stage 1 into /app/static
 COPY --from=frontend-builder /build/dist /app/static

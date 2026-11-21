@@ -19,9 +19,14 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, List, Optional
 
-from backend.app.engine.models import Measurement
-from backend.app.engine.predictor import predict_link
-from backend.app.engine.time_series import TimeSeriesStore, get_time_series_store
+try:
+    from app.engine.models import Measurement
+    from app.engine.predictor import predict_link
+    from app.engine.time_series import TimeSeriesStore, get_time_series_store
+except ImportError:
+    from backend.app.engine.models import Measurement
+    from backend.app.engine.predictor import predict_link
+    from backend.app.engine.time_series import TimeSeriesStore, get_time_series_store
 
 
 class ReplayAdapter:
