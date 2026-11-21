@@ -35,6 +35,10 @@ COPY backend/ /app/
 # Copy compiled frontend from Stage 1 into /app/static
 COPY --from=frontend-builder /build/dist /app/static
 
+# Copy entrypoint script for handling volume permissions on PaaS
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Create persistent data directory and grant permissions to non-root user
 RUN mkdir -p /app/data && \
     chown -R hoptrace:hoptrace /app /app/data
@@ -47,4 +51,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).getcode() == 200 else 1)"
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
