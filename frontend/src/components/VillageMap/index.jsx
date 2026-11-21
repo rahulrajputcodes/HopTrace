@@ -221,7 +221,7 @@ export default function VillageMap() {
   const activeSource = isAnyLive ? 'live' : dataSource;
 
   return (
-    <div className="relative isolate w-full h-full min-h-[520px] bg-[#050d1a] overflow-hidden select-none">
+    <div className="relative isolate w-full h-full bg-[#050d1a] overflow-hidden select-none">
       {/* Honesty Chip */}
       <div
         role="note"
