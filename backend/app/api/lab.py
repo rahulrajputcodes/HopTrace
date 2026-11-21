@@ -20,6 +20,7 @@ from app.config import settings
 from app.db.connection import get_db
 from app.db.repository import create_incident, get_incident
 from app.engine.facade import get_engine, get_incident_details, get_topology, run_scenario
+from app.engine.telemetry import BASELINE_TELEMETRY, EXTENDED_BASELINE_TELEMETRY
 from app.engine.time_series import get_time_series_store
 from app.schemas.lab import (
     AffectedSubscriberSchema,
@@ -54,7 +55,7 @@ def run_lab_scenario(
     # 1. Validate targets against actual topology
     try:
         topo = get_topology()
-        known_links = {link.id for link in topo.links}
+        known_links = {link.id for link in topo.links} | set(EXTENDED_BASELINE_TELEMETRY.keys())
         known_ap_nodes = {node.id for node in topo.nodes if node.type == "access_point"}
         known_nodes = {node.id for node in topo.nodes}
     except Exception as exc:
@@ -63,7 +64,17 @@ def run_lab_scenario(
             detail=f"Network topology unavailable: {exc}",
         ) from exc
 
-    if payload.scenario in ("degrade_link", "flapping_link"):
+    link_scenarios = (
+        "degrade_link",
+        "flapping_link",
+        "gradual_degradation",
+        "ramp_linear",
+        "ramp_accelerating",
+        "step_with_noise",
+        "rain_fade",
+        "flapping_precursor",
+    )
+    if payload.scenario in link_scenarios:
         if payload.target_link_id not in known_links:
             raise HTTPException(
                 status_code=422,
@@ -86,13 +97,43 @@ def run_lab_scenario(
 
     # 2. Execute scenario via engine facade
     try:
-        sim_response = run_scenario(
-            scenario=payload.scenario,
-            target_link_id=payload.target_link_id,
-            target_node_id=payload.target_node_id,
-            severity=payload.severity,
-            force_in_memory=True,
+        engine = get_engine()
+
+        # Gradual/ramp scenarios: register ramp state, then run tick-0 snapshot.
+        # At progress=0 the link is at baseline so incident_id is expected null.
+        ramp_scenarios = (
+            "gradual_degradation",
+            "ramp_linear",
+            "ramp_accelerating",
+            "step_with_noise",
+            "rain_fade",
+            "flapping_precursor",
         )
+        if payload.scenario in ramp_scenarios:
+            if payload.target_link_id:
+                engine.start_ramp(
+                    target_link_id=payload.target_link_id,
+                    severity=payload.severity,
+                )
+            sim_response = engine.run_scenario(
+                scenario=payload.scenario,
+                target_link_id=payload.target_link_id,
+                severity=payload.severity,
+                ramp_progress=0.0,
+                force_in_memory=True,
+            )
+        else:
+            # Any non-ramp scenario clears the ramp so the streaming loop reverts to baseline.
+            if payload.scenario != "baseline":
+                # Non-baseline, non-ramp: clear any stale ramp state
+                engine.clear_ramp()
+            sim_response = engine.run_scenario(
+                scenario=payload.scenario,
+                target_link_id=payload.target_link_id,
+                target_node_id=payload.target_node_id,
+                severity=payload.severity,
+                force_in_memory=True,
+            )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -1,15 +1,15 @@
-"""
-New v2 API endpoints for topology risk scoring and link history.
+"""GET /api/v1/topology/risk, GET /api/v1/topology/history/{link_id}, GET /api/v1/villages
 
-GET /api/v1/topology/risk         — Per-link risk scores + trends
-GET /api/v1/topology/history/{link_id} — Last N telemetry samples
-GET /api/v1/villages              — Village list + aggregate health
+Returns per-link risk snapshot (including optional Theil-Sen ETA predictions),
+historical telemetry samples, and village health aggregations.
+
+Follows docs/api-contract.md §5 (Predictive Fault AI).
 """
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.engine.facade import get_topology
 from app.engine.time_series import get_time_series_store
@@ -19,22 +19,88 @@ router = APIRouter(tags=["topology"])
 
 
 class LinkRiskItem(BaseModel):
-    link_id: str
-    risk_score: float
-    trend: str
-    alert_level: str
-    flap_count: int
-    ewma_latency_ms: Optional[float] = None
-    ewma_loss_pct: Optional[float] = None
-    ewma_throughput_mbps: Optional[float] = None
+    """Per-link risk entry returned by GET /topology/risk.
 
+    Prediction fields are optional — they are absent (null) when the
+    predictor cannot issue a forecast (too few samples, link stable,
+    link already failed, or connectivity lost).
+    """
 
-class TopologyRiskResponse(BaseModel):
-    links: List[LinkRiskItem]
-    network_status: str
-    cascade_detected: bool
-    flapping_links: List[str]
-    max_risk_score: float
+    link_id: str = Field(..., description="Link identifier (e.g. 'L3')")
+    connectivity_ok: Optional[bool] = Field(
+        None, description="Whether the link is locally link-present"
+    )
+    packet_loss_pct: Optional[float] = Field(
+        None, description="Observed packet loss percentage"
+    )
+    latency_ms: Optional[float] = Field(
+        None, description="Observed round-trip latency in milliseconds"
+    )
+    throughput_mbps: Optional[float] = Field(
+        None, description="Observed throughput in Mbps"
+    )
+    data_source: str = Field(
+        "simulated", description="'simulated' (lab/eval) or 'measured' (replay probe)"
+    )
+    risk_score: Optional[float] = Field(
+        0.0, description="EWMA anomaly risk score (0-100)"
+    )
+    trend: Optional[str] = Field(
+        "stable", description="Trend direction: stable | degrading | recovering"
+    )
+    alert_level: Optional[str] = Field(
+        "normal", description="Alert level: normal | warning | critical"
+    )
+    flap_count: Optional[int] = Field(
+        0, description="Flap toggle count in recent window"
+    )
+    ewma_latency_ms: Optional[float] = Field(
+        None, description="EWMA smoothed latency in milliseconds"
+    )
+    ewma_loss_pct: Optional[float] = Field(
+        None, description="EWMA smoothed packet loss percentage"
+    )
+    ewma_throughput_mbps: Optional[float] = Field(
+        None, description="EWMA smoothed throughput in Mbps"
+    )
+    predicted_eta_minutes: Optional[float] = Field(
+        None,
+        description=(
+            "Predicted time-to-failure in simulated minutes, derived from "
+            "Theil-Sen slope on Degradation Index D.  Null when no prediction "
+            "is issued."
+        ),
+    )
+    prediction_confidence: Optional[str] = Field(
+        None,
+        description=(
+            "Confidence level of the forecast: 'high' (R²≥0.80, n≥10), "
+            "'medium' (R²≥0.50), 'low' (R²<0.50).  Null when no prediction."
+        ),
+    )
+    prediction_r2: Optional[float] = Field(
+        None,
+        description=(
+            "Coefficient of determination (R²) of the Theil-Sen fit on D. "
+            "Null when no prediction is issued."
+        ),
+    )
+    predicted_eta_min_minutes: Optional[float] = Field(
+        None,
+        description=(
+            "Lower bound of the predicted time-to-failure in simulated minutes, "
+            "derived from the 80th percentile slope (fastest degradation trend). "
+            "Null when no prediction is issued."
+        ),
+    )
+    predicted_eta_max_minutes: Optional[float] = Field(
+        None,
+        description=(
+            "Upper bound of the predicted time-to-failure in simulated minutes, "
+            "derived from the 20th percentile slope (slowest degradation trend). "
+            "Null when no prediction is issued."
+        ),
+    )
 
 
 class LinkHistorySample(BaseModel):
@@ -71,45 +137,25 @@ class VillagesResponse(BaseModel):
 
 @router.get(
     "/topology/risk",
-    response_model=TopologyRiskResponse,
-    summary="Get per-link risk scores and trend analysis",
+    response_model=List[LinkRiskItem],
+    summary="Per-link risk snapshot with predictive ETA",
+    description=(
+        "Returns the most-recent observed telemetry for every link that has "
+        "been pushed into the time-series store, plus an optional ETA-to-failure "
+        "prediction when the Theil-Sen trend fit is reliable.  "
+        "All prediction fields are optional and additive — they are null when "
+        "insufficient data is available or the link is stable/healthy.  "
+        "Existing topology fields are not modified."
+    ),
 )
-def get_topology_risk() -> TopologyRiskResponse:
-    """Returns real-time risk scores, trends, and alert levels for all tracked links."""
-    ts_store = get_time_series_store()
-    risk_data = ts_store.get_risk_snapshot()
-    cascade = ts_store.detect_cascade(threshold_risk=60.0)
-    flapping = ts_store.detect_flapping_links()
+def topology_risk() -> List[LinkRiskItem]:
+    """Return the risk snapshot from the shared time-series store.
 
-    link_items = [
-        LinkRiskItem(
-            link_id=r["link_id"],
-            risk_score=r["risk_score"],
-            trend=r["trend"],
-            alert_level=r["alert_level"],
-            flap_count=r["flap_count"],
-            ewma_latency_ms=r.get("ewma_latency_ms"),
-            ewma_loss_pct=r.get("ewma_loss_pct"),
-            ewma_throughput_mbps=r.get("ewma_throughput_mbps"),
-        )
-        for r in risk_data
-    ]
-
-    max_risk = max((r.risk_score for r in link_items), default=0.0)
-    if max_risk >= 75 or any(r.alert_level == "critical" for r in link_items):
-        network_status = "critical"
-    elif max_risk >= 40 or cascade:
-        network_status = "degraded"
-    else:
-        network_status = "healthy"
-
-    return TopologyRiskResponse(
-        links=link_items,
-        network_status=network_status,
-        cascade_detected=cascade,
-        flapping_links=flapping,
-        max_risk_score=max_risk,
-    )
+    - 200: snapshot returned (may be empty list if store has no data yet).
+    """
+    store = get_time_series_store()
+    raw = store.get_risk_snapshot()
+    return [LinkRiskItem(**entry) for entry in raw]
 
 
 @router.get(
@@ -122,7 +168,6 @@ def get_link_history(
     n: int = Query(50, ge=1, le=200, description="Number of recent samples to return"),
 ) -> LinkHistoryResponse:
     """Returns last N telemetry samples for the specified link from the time-series store."""
-    # Validate link exists in topology
     try:
         topo = get_topology()
         known_links = {lk.id for lk in topo.links}
@@ -166,19 +211,22 @@ def get_villages() -> VillagesResponse:
     """Returns all villages with their current network health status."""
     ts_store = get_time_series_store()
 
-    # AP → village mapping
-    AP_VILLAGE = {
-        "AP1": "rampur", "AP2": "rampur",
-        "AP3": "bhatpur", "AP4": "bhatpur",
-        "AP5": "daulatpur", "AP6": "daulatpur",
-    }
-
     # Link → village mapping (village is affected if upstream link is bad)
     LINK_VILLAGE = {
         "L1": None,  # Affects all villages
-        "L2": "rampur", "L3": "rampur", "L4": "rampur", "L5": "rampur",
-        "L6": "bhatpur", "L7": "bhatpur", "L8": "bhatpur", "L9": "bhatpur", "L10": "bhatpur",
-        "L11": "daulatpur", "L12": "daulatpur", "L13": "daulatpur", "L14": "daulatpur",
+        "L2": "rampur",
+        "L3": "rampur",
+        "L4": "rampur",
+        "L5": "rampur",
+        "L6": "bhatpur",
+        "L7": "bhatpur",
+        "L8": "bhatpur",
+        "L9": "bhatpur",
+        "L10": "bhatpur",
+        "L11": "daulatpur",
+        "L12": "daulatpur",
+        "L13": "daulatpur",
+        "L14": "daulatpur",
     }
 
     risk_map = {r["link_id"]: r["risk_score"] for r in ts_store.get_risk_snapshot()}
@@ -186,7 +234,9 @@ def get_villages() -> VillagesResponse:
     village_risks: Dict[str, List[float]] = {v: [] for v in VILLAGE_METADATA}
     for link_id, village in LINK_VILLAGE.items():
         if village and link_id in risk_map:
-            village_risks[village].append(risk_map[link_id])
+            score = risk_map[link_id]
+            if score is not None:
+                village_risks[village].append(score)
 
     village_healths = []
     for vid, meta in VILLAGE_METADATA.items():
@@ -199,15 +249,17 @@ def get_villages() -> VillagesResponse:
         else:
             vstatus = "healthy"
 
-        village_healths.append(VillageHealth(
-            village_id=vid,
-            name=meta["name"],
-            population=meta["population"],
-            access_points=meta["access_points"],
-            description=meta["description"],
-            max_risk_score=round(max_r, 1),
-            status=vstatus,
-        ))
+        village_healths.append(
+            VillageHealth(
+                village_id=vid,
+                name=meta["name"],
+                population=meta["population"],
+                access_points=meta["access_points"],
+                description=meta["description"],
+                max_risk_score=round(max_r, 1),
+                status=vstatus,
+            )
+        )
 
     return VillagesResponse(villages=village_healths)
 

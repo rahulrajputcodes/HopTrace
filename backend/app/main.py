@@ -21,9 +21,13 @@ from app.api.lab import router as lab_router
 from app.api.measurements import router as measurements_router
 from app.api.probes import router as probes_router
 from app.api.subscribers import router as subscribers_router
+from app.api.telemetry_ws import (
+    router as telemetry_ws_router,
+    start_streaming_loop,
+    stop_streaming_loop,
+)
 from app.api.topology import router as topology_router
 from app.api.topology_v2 import router as topology_v2_router
-from app.api.telemetry_ws import router as telemetry_ws_router, start_streaming_loop, stop_streaming_loop
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.config import settings
 from app.db.init import init_db
@@ -92,4 +96,5 @@ app.include_router(measurements_router,  prefix=API_PREFIX, tags=["measurements"
 app.include_router(probes_router,        prefix=API_PREFIX, tags=["probes"])
 app.include_router(explanations_router,  prefix=API_PREFIX, tags=["explanations"])
 app.include_router(agents_router,        prefix=API_PREFIX, tags=["agents"])
+app.include_router(telemetry_ws_router,  prefix=API_PREFIX, tags=["telemetry"])
 app.include_router(telemetry_ws_router,  tags=["realtime"])   # WebSocket (no prefix)
