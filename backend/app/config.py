@@ -96,6 +96,15 @@ class Settings(BaseSettings):
     twilio_from_number: str = ""
     twilio_whatsapp_from_number: str = ""
 
+    # M3: Notification Real-Send Allowlist
+    # Comma-separated E.164 phone numbers permitted for real live Twilio sends.
+    # Any destination outside this allowlist is safely routed through the console/sandbox provider.
+    real_send_allowlist: str = ""
+
+    @property
+    def real_send_allowlist_set(self) -> set[str]:
+        return {p.strip() for p in self.real_send_allowlist.split(",") if p.strip()}
+
     @field_validator("sarvam_model", mode="before")
     @classmethod
     def _validate_sarvam_model(cls, v: object) -> str:

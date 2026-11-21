@@ -5,7 +5,7 @@ Implements:
 - NotificationProvider: Abstract base class for outage alert delivery.
 - UnavailableNotificationProvider: Honest default raising NotificationProviderUnavailableError (HTTP 503).
 - ConsoleNotificationProvider: Demo and testing provider logging messages and recording them in memory.
-- TwilioNotificationProvider: Twilio SMS and WhatsApp provider (enabled when TWILIO_* credentials exist).
+- TwilioNotificationProvider: Twilio SMS and WhatsApp provider (enforces REAL_SEND_ALLOWLIST).
 """
 from __future__ import annotations
 
@@ -16,8 +16,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +140,7 @@ class TwilioNotificationProvider(NotificationProvider):
     """
     Twilio notification provider supporting SMS and WhatsApp dispatch via Twilio REST API.
     Enabled only when TWILIO_* credentials are valid and non-blank.
+    Enforces REAL_SEND_ALLOWLIST: unapproved numbers are routed safely through the sandbox.
     """
 
     def __init__(
@@ -147,6 +150,7 @@ class TwilioNotificationProvider(NotificationProvider):
         from_number: str,
         whatsapp_from_number: Optional[str] = None,
         timeout_seconds: float = 15.0,
+        allowlist: Optional[Set[str]] = None,
     ) -> None:
         if not account_sid or not account_sid.strip():
             raise NotificationProviderUnavailableError(
@@ -166,6 +170,13 @@ class TwilioNotificationProvider(NotificationProvider):
         self.from_number = from_number.strip()
         self.whatsapp_from_number = (whatsapp_from_number or from_number).strip()
         self.timeout_seconds = timeout_seconds
+        self._allowlist = allowlist
+
+    @property
+    def allowlist(self) -> Set[str]:
+        if self._allowlist is not None:
+            return self._allowlist
+        return settings.real_send_allowlist_set
 
     @property
     def provider_name(self) -> str:
@@ -178,17 +189,38 @@ class TwilioNotificationProvider(NotificationProvider):
         channel: str = "sms",
         subscriber_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        norm_recipient = recipient.strip()
         channel_lower = channel.lower().strip()
+
+        # Real-send allowlist enforcement (M3)
+        # Only explicitly allowlisted numbers receive real Twilio calls
+        if norm_recipient not in self.allowlist:
+            sandbox_id = f"sandbox-{uuid4().hex[:8]}"
+            logger.info(
+                "[TWILIO SANDBOX ROUTED] Recipient %s not in REAL_SEND_ALLOWLIST; routing to sandbox. ID: %s",
+                norm_recipient,
+                sandbox_id,
+            )
+            return {
+                "message_id": sandbox_id,
+                "status": "sent",
+                "recipient": recipient,
+                "channel": channel_lower,
+                "subscriber_id": subscriber_id,
+                "provider": "console",
+                "sandboxed": True,
+            }
+
         if channel_lower == "whatsapp":
             from_target = self.whatsapp_from_number
             if not from_target.startswith("whatsapp:"):
                 from_target = f"whatsapp:{from_target}"
-            to_target = recipient.strip()
+            to_target = norm_recipient
             if not to_target.startswith("whatsapp:"):
                 to_target = f"whatsapp:{to_target}"
         else:
             from_target = self.from_number
-            to_target = recipient.strip()
+            to_target = norm_recipient
 
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
         form_data = urllib.parse.urlencode({

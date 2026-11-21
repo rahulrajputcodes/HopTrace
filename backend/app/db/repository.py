@@ -555,3 +555,128 @@ def list_runs(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]
         (limit,),
     )
     return [dict(row) for row in cursor.fetchall()]
+
+
+# ── M3: Notification Persistence ─────────────────────────────────────────────
+
+def get_notification_batch_by_idempotency(
+    conn: sqlite3.Connection,
+    incident_id: str,
+    idempotency_key: str,
+) -> dict[str, Any] | None:
+    """Fetch an existing notification batch by incident ID and idempotency key."""
+    cursor = conn.execute(
+        """
+        SELECT id, incident_id, kind, channel, provider, idempotency_key, created_by, created_at
+        FROM notification_batches
+        WHERE incident_id = ? AND idempotency_key = ?;
+        """,
+        (incident_id, idempotency_key),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    batch = dict(row)
+    batch["deliveries"] = get_notification_deliveries(conn, batch["id"])
+    return batch
+
+
+def get_notification_deliveries(
+    conn: sqlite3.Connection,
+    batch_id: str,
+) -> list[dict[str, Any]]:
+    """Fetch all deliveries for a given batch."""
+    cursor = conn.execute(
+        """
+        SELECT d.id, d.batch_id, d.subscriber_id, d.language, d.message, d.message_source,
+               d.status, d.message_id, d.error, d.updated_at,
+               b.channel, b.provider,
+               s.display_name as subscriber_name, COALESCE(s.phone, '') as recipient
+        FROM notification_deliveries d
+        JOIN notification_batches b ON d.batch_id = b.id
+        LEFT JOIN subscribers s ON d.subscriber_id = s.id
+        WHERE d.batch_id = ?
+        ORDER BY d.rowid ASC;
+        """,
+        (batch_id,),
+    )
+    rows = cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+def list_notification_batches_by_incident(
+    conn: sqlite3.Connection,
+    incident_id: str,
+) -> list[dict[str, Any]]:
+    """Fetch all batches for an incident, newest first, with deliveries."""
+    cursor = conn.execute(
+        """
+        SELECT id, incident_id, kind, channel, provider, idempotency_key, created_by, created_at
+        FROM notification_batches
+        WHERE incident_id = ?
+        ORDER BY created_at DESC, rowid DESC;
+        """,
+        (incident_id,),
+    )
+    rows = cursor.fetchall()
+    batches = []
+    for r in rows:
+        batch = dict(r)
+        batch["deliveries"] = get_notification_deliveries(conn, batch["id"])
+        batches.append(batch)
+    return batches
+
+
+def create_notification_batch(
+    conn: sqlite3.Connection,
+    batch_data: dict[str, Any],
+) -> None:
+    """Insert a new notification batch."""
+    conn.execute(
+        """
+        INSERT INTO notification_batches (
+            id, incident_id, kind, channel, provider, idempotency_key, created_by, created_at
+        ) VALUES (
+            :id, :incident_id, :kind, :channel, :provider, :idempotency_key, :created_by, :created_at
+        );
+        """,
+        batch_data,
+    )
+
+
+def create_notification_deliveries(
+    conn: sqlite3.Connection,
+    deliveries: list[dict[str, Any]],
+) -> None:
+    """Insert multiple notification delivery records."""
+    if not deliveries:
+        return
+    conn.executemany(
+        """
+        INSERT INTO notification_deliveries (
+            id, batch_id, subscriber_id, language, message, message_source, status, message_id, error, updated_at
+        ) VALUES (
+            :id, :batch_id, :subscriber_id, :language, :message, :message_source, :status, :message_id, :error, :updated_at
+        );
+        """,
+        deliveries,
+    )
+
+
+def update_notification_delivery(
+    conn: sqlite3.Connection,
+    delivery_id: str,
+    status: str,
+    message_id: str | None,
+    error: str | None,
+    updated_at: str,
+) -> None:
+    """Update delivery status and attempt tracking."""
+    conn.execute(
+        """
+        UPDATE notification_deliveries
+        SET status = ?, message_id = ?, error = ?, updated_at = ?
+        WHERE id = ?;
+        """,
+        (status, message_id, error, updated_at, delivery_id),
+    )

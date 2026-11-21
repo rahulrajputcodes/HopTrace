@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import useStore from '../../store/appStore';
 import { useApi } from '../../hooks/useApi';
 import HopTraceStrip from './HopTraceStrip';
+// M3: Subscriber notification panel integration
+import NotifyPanel from '../Notify';
 
 const SEV_COLORS = {
   critical: 'bg-red-900 border-red-600 text-red-300',
@@ -370,6 +372,11 @@ export default function IncidentPanel() {
             `🤖 Explain in ${sarvamLanguage.toUpperCase()} via Sarvam AI`
           )}
         </button>
+      </div>
+
+      {/* M3: Incident subscriber notifications panel */}
+      <div className="px-3 pb-3">
+        <NotifyPanel incident={activeIncident} />
       </div>
     </div>
   );
