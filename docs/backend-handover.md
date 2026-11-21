@@ -213,26 +213,22 @@ See [`docs/test-plan.md`](file:///Users/rahulrajput/Documents/HopTrace/docs/test
 
 1. **In-Memory Development Mode (`force_in_memory=True`):**  
    The application currently forces `force_in_memory=True` during startup and lab runs. This mirrors the full graph model in memory so the application runs offline without a live Neo4j database.
-2. **Simulated Data Source:**  
-   All telemetry produced by the engine carries `"data_source": "simulated"`. Do not label this as live/measured.
+2. **Simulated vs. Live Data Source:**  
+   Telemetry produced by scenario simulations carries `"data_source": "simulated"`, whereas real telemetry ingested via `/api/v1/measurements/ingest` carries `"data_source": "live"`.
 3. **Live External Services Unverified:**  
    - Live Neo4j database connectivity has not been verified against a remote cloud instance (2 integration tests skip when offline).
    - Live Sarvam AI API calls require a valid `SARVAM_API_KEY`. Without it, `/explain` honestly returns 503.
-4. **Ephemeral Run/Incident Memory:**  
-   Run measurements (`/runs/{id}/measurements`) are stored in `HopTraceEngine._runs` in memory. If the backend restarts, past run measurements return 404 (persisted incidents remain in SQLite).
-5. **No Run History Table:**  
-   Persisting historical lab run telemetry into SQLite is deferred as future work.
+4. **Persistent Run & Measurement History:**  
+   All lab test runs and telemetry observations persist in SQLite (`runs` and `measurements` tables) and survive application restarts. Past run measurements are retrieved via `GET /runs/{id}/measurements` from memory or SQLite, and older runs are automatically pruned according to `RUNS_RETENTION_LIMIT` (default: 1000).
 
 ---
 
 ## 8. Future Work & Next Steps
 
-1. **Database Run History Table:**  
-   Add a `runs` and `measurements` table in SQLite so telemetry persists across server restarts.
-2. **Neo4j Production Wiring:**  
+1. **Neo4j Production Wiring:**  
    Switch `force_in_memory=False` when `NEO4J_URI` and credentials are authenticated to enable live Cypher graph queries.
-3. **Telemetry Streaming:**  
-   Implement WebSocket or SSE endpoints for real-time telemetry streaming to the frontend.
+2. **Predictive Analytics Expansion:**  
+   Extend the EWMA time-series engine with ARIMA or deep-learning forecasting models for preemptive fault alerting.
 
 ---
 

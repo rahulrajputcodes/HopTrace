@@ -17,34 +17,76 @@ Response:
 
 GET /api/v1/topology
 
-Response:
+Returns the current network topology as a graph of nodes and links.
+
+### Fields and Schema
+
+#### Node fields:
+- `id`: string, unique node identifier (e.g. "GW1", "R1", "AP1").
+- `type`: string, one of `gateway`, `router`, `wireless_bridge`, `access_point`.
+- `label`: string, human-readable display label.
+- `status`: string, one of `healthy`, `degraded`, `failed`, `unknown`.
+- `lat`: optional float between -90 and 90, WGS-84 latitude (`null` when absent). Note: lat/lon coordinates are illustrative placement, not surveyed.
+- `lon`: optional float between -180 and 180, WGS-84 longitude (`null` when absent).
+- `village`: optional string, lowercase village identifier (`null` when absent). Valid values include `rampur`, `bhatpur`, `daulatpur`, and `block_hq`. Note that `"block_hq"` is a valid node village for gateway GW1 that is not present in `/villages`.
+- `coverage_radius_m`: optional integer > 0, coverage radius in metres for access points (`null` when absent; present only on `access_point` nodes).
+
+#### Link fields:
+- `id`: string, unique link identifier (e.g. "L1", "L3").
+- `source`: string, source node ID.
+- `target`: string, target node ID.
+- `status`: string, one of `healthy`, `degraded`, `failed`, `unknown`.
+- `latency_ms`: optional float, one-way latency in milliseconds (`null` when absent).
+- `packet_loss_pct`: optional float, packet loss percentage (`null` when absent).
+- `throughput_mbps`: optional float, throughput in megabits per second (`null` when absent).
+- `distance_km`: optional float, link distance in kilometres (`null` when absent).
+- `medium`: optional string, physical transmission medium: `fiber`, `wireless_ptp`, or `ethernet` (`null` when absent).
+- `frequency`: optional string, wireless operating frequency such as `"5GHz"` or `"60GHz"` (`null` when absent).
+
+All additions are backward compatible; existing clients expecting the base four fields on nodes and seven fields on links can consume responses without error, and unset optional fields serialize as explicit `null`.
+
+#### Response Example:
+```json
 {
   "nodes": [
     {
-      "id": "GW1",
-      "type": "gateway",
-      "label": "Upstream Gateway",
-      "status": "healthy"
+      "id": "R1",
+      "type": "router",
+      "label": "Rampur Core Router (Tower)",
+      "status": "healthy",
+      "lat": 27.20000,
+      "lon": 80.60000,
+      "village": "rampur",
+      "coverage_radius_m": null
+    },
+    {
+      "id": "AP1",
+      "type": "access_point",
+      "label": "Rampur North Market AP",
+      "status": "healthy",
+      "lat": 27.22906,
+      "lon": 80.60602,
+      "village": "rampur",
+      "coverage_radius_m": 300
     }
   ],
   "links": [
     {
-      "id": "L1",
-      "source": "GW1",
-      "target": "HOP1",
+      "id": "L3",
+      "source": "WB1",
+      "target": "WB2",
       "status": "healthy",
-      "latency_ms": 20.0,
-      "packet_loss_pct": 0.0,
-      "throughput_mbps": 40.0
+      "latency_ms": 25.0,
+      "packet_loss_pct": 0.5,
+      "throughput_mbps": 35.0,
+      "distance_km": 3.2,
+      "medium": "wireless_ptp",
+      "frequency": "5GHz"
     }
   ],
   "data_source": "simulated"
 }
-
-Node types:
-gateway, router, wireless_bridge, access_point
-
-Link and measurement values may be null when unavailable.
+```
 
 data_source must be "simulated" or "measured".
 

@@ -1,0 +1,42 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hoptrace-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - TOPOLOGY_PROVIDER=engine
+      - DEPENDENCY_ADAPTER=engine
+      - EXPLANATION_PROVIDER=simulated
+      - NOTIFICATION_PROVIDER=console
+      - SQLITE_DB_PATH=/app/data/hoptrace.db
+      - INGEST_RETENTION_RUNS=1000
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
+    volumes:
+      - hoptrace_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: hoptrace-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  hoptrace_data:

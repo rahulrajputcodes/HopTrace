@@ -5,7 +5,7 @@ Follows docs/api-contract.md Section 8 and Section 9.
 """
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -15,6 +15,9 @@ class SubscriberItem(BaseModel):
     id: str = Field(..., description="Unique subscriber identifier (e.g. SUB101)")
     display_name: str = Field(..., description="Subscriber name / label")
     plan: str = Field(..., description="Subscription plan name")
+    plan_price: float = Field(default=399.0, description="Monthly plan price in INR")
+    phone: Optional[str] = Field("+919876543200", description="Subscriber phone number")
+    preferred_language: Optional[str] = Field("hi", description="Preferred notification language")
     access_point_id: str = Field(..., description="ID of connected access point")
     status: str = Field(..., description="Subscriber status (e.g. active, suspended)")
     payment_status: str = Field(..., description="Payment status (e.g. paid, overdue, pending)")

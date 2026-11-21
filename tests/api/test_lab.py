@@ -28,7 +28,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db.connection import get_db_connection
+from app.db.init import DEMO_INCIDENTS
 from app.db.repository import get_incident, get_latest_incident
+from app.engine.topology import get_default_links
 
 
 # ── 1. Successful Baseline Run ────────────────────────────────────────────────
@@ -336,7 +338,7 @@ def test_lab_run_upstream_failure_success(client: TestClient, isolated_db: str) 
     data = response.json()
     assert data["run_id"].startswith("run-")
     assert data["data_source"] == "simulated"
-    assert data["measurements_count"] == 5
+    assert data["measurements_count"] == len(get_default_links())
     assert data["incident_id"] is not None
 
     # Verify incident persisted in SQLite with inferred L1 suspect
@@ -365,7 +367,7 @@ def test_lab_run_upstream_failure_non_existent_target_node_422(
         },
     )
     assert response.status_code == 422
-    assert "not found in network topology" in response.json()["detail"]
+    assert "not found in topology" in response.json()["detail"].lower()
 
 
 def test_lab_run_upstream_failure_affected_subscribers_and_measurements(
@@ -389,16 +391,17 @@ def test_lab_run_upstream_failure_affected_subscribers_and_measurements(
     aff_resp = client.get(f"/api/v1/incidents/{incident_id}/affected-subscribers")
     assert aff_resp.status_code == 200
     aff_data = aff_resp.json()
-    assert aff_data["count"] == 5
+    assert aff_data["count"] == 20
     sub_ids = {s["id"] for s in aff_data["subscribers"]}
-    assert sub_ids == {"SUB101", "SUB102", "SUB201", "SUB202", "SUB203"}
+    assert len(sub_ids) == 20
+    assert {"SUB101", "SUB102", "SUB103", "SUB201", "SUB202", "SUB203", "SUB204"}.issubset(sub_ids)
 
     # 2. Check measurements: L1 has connectivity_ok=False; interior links have connectivity_ok=True but 100% loss
     meas_resp = client.get(f"/api/v1/runs/{run_id}/measurements")
     assert meas_resp.status_code == 200
     meas_data = meas_resp.json()
     assert meas_data["data_source"] == "simulated"
-    assert len(meas_data["measurements"]) == 5
+    assert len(meas_data["measurements"]) == len(get_default_links())
 
     meas_map = {m["component_id"]: m for m in meas_data["measurements"]}
     assert meas_map["L1"]["connectivity_ok"] is False
@@ -431,9 +434,10 @@ def test_lab_run_ambiguous_fault_success(client: TestClient, isolated_db: str) -
 # ── 15. Demo Incident Preserved ──────────────────────────────────────────────
 
 def test_lab_run_demo_incident_preserved(client: TestClient, isolated_db: str) -> None:
-    """Demo incident incident-001 is preserved across simulation runs."""
+    """Demo incident is preserved across simulation runs."""
+    demo_id = DEMO_INCIDENTS[0]["id"]
     conn = get_db_connection(isolated_db)
-    demo = get_incident(conn, "incident-001")
+    demo = get_incident(conn, demo_id)
     assert demo is not None
 
     client.post(
@@ -441,9 +445,9 @@ def test_lab_run_demo_incident_preserved(client: TestClient, isolated_db: str) -
         json={"scenario": "degrade_link", "target_link_id": "L5", "severity": "medium"},
     )
 
-    demo_after = get_incident(conn, "incident-001")
+    demo_after = get_incident(conn, demo_id)
     assert demo_after is not None
-    assert demo_after["id"] == "incident-001"
+    assert demo_after["id"] == demo_id
 
 
 # ── 16. Topology Provider Failure ────────────────────────────────────────────
@@ -462,7 +466,7 @@ def test_lab_run_topology_provider_failure_returns_503(client: TestClient, isola
         )
         assert response.status_code == 503
         data = response.json()
-        assert "Network topology is currently unavailable" in data["detail"]
+        assert "Network topology unavailable" in data["detail"]
         mock_run_scenario.assert_not_called()
 
 
@@ -475,5 +479,5 @@ def test_lab_run_topology_provider_failure_baseline_returns_503(client: TestClie
             json={"scenario": "baseline"},
         )
         assert response.status_code == 503
-        assert "Network topology is currently unavailable" in response.json()["detail"]
+        assert "Network topology unavailable" in response.json()["detail"]
         mock_run_scenario.assert_not_called()

@@ -32,13 +32,13 @@ class Settings(BaseSettings):
     # --- Topology provider ---
     # "simulated"  – use the built-in SimulatedTopologyProvider (no Neo4j needed)
     # "engine"     – use the EngineTopologyProvider (HopTrace graph engine)
-    topology_provider: str = "simulated"
+    topology_provider: str = "engine"
 
     # --- Dependency analysis adapter ---
     # "unavailable" – default honest behavior when engine is not connected (returns 503)
     # "simulated"   – simulated dependency mapping for demos/testbed
     # "engine"      – engine dependency adapter (when implemented)
-    dependency_adapter: str = "unavailable"
+    dependency_adapter: str = "engine"
 
     # --- Explanation provider ---
     # "unavailable" – default honest behavior when no explanation provider is connected (returns 503)
@@ -50,6 +50,30 @@ class Settings(BaseSettings):
     sarvam_api_key: str = ""
     sarvam_model: str = "sarvam-105b"
     sarvam_timeout_seconds: float = 30.0
+
+    # --- Telemetry Ingestion ---
+    # Optional API key for POST /api/v1/measurements/ingest (header X-API-Key)
+    ingest_api_key: str = ""
+
+    # --- Run Telemetry Retention (SQLite) ---
+    # Maximum number of past test runs and their measurements to retain in SQLite
+    runs_retention_limit: int = 1000
+
+    # --- Business Impact & SLA Credits ---
+    # Fraction of monthly plan price credited per hour of outage (e.g. 0.02 = 2% per hour)
+    sla_credit_rate_per_hour: float = 0.02
+
+    # --- Notification Provider ---
+    # "unavailable" – default honest behavior (returns 503)
+    # "console"     – demo provider logging notifications
+    # "twilio"      – Twilio SMS / WhatsApp delivery
+    notification_provider: str = "unavailable"
+
+    # --- Twilio (used when NOTIFICATION_PROVIDER=twilio) ---
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_whatsapp_from_number: str = ""
 
     @field_validator("sarvam_model", mode="before")
     @classmethod
@@ -76,6 +100,34 @@ class Settings(BaseSettings):
                 f"SARVAM_TIMEOUT_SECONDS must be greater than zero; got {value!r}."
             )
         return value
+
+    @field_validator("runs_retention_limit", mode="before")
+    @classmethod
+    def _validate_runs_retention_limit(cls, v: object) -> int:
+        """Reject non-positive retention limit values."""
+        try:
+            value = int(v)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"RUNS_RETENTION_LIMIT must be an integer; got {v!r}."
+            )
+        if value <= 0:
+            raise ValueError("RUNS_RETENTION_LIMIT must be greater than zero.")
+        return value
+
+    @field_validator("sla_credit_rate_per_hour", mode="before")
+    @classmethod
+    def _validate_sla_credit_rate(cls, v: object) -> float:
+        """Ensure sla_credit_rate_per_hour is non-negative."""
+        try:
+            val = float(v)
+            if val < 0.0:
+                raise ValueError
+            return val
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"SLA_CREDIT_RATE_PER_HOUR must be a non-negative number; got {v!r}."
+            )
 
     # Neo4j connection (used by the graph engine when configured)
     neo4j_uri: str = "bolt://localhost:7687"
