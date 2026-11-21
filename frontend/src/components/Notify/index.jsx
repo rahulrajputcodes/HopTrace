@@ -12,7 +12,13 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import useStore from '../../store/appStore';
-import { useApi } from '../../hooks/useApi';
+import {
+  fetchNotificationPreview,
+  sendNotifications,
+  fetchNotificationHistory,
+  retryNotifications,
+  fetchNotificationStatus,
+} from './notifyApi';
 import ChannelSelector from './ChannelSelector';
 import SubscriberPreview from './SubscriberPreview';
 import SendConfirmDialog from './SendConfirmDialog';
@@ -20,13 +26,6 @@ import DeliveryStatus from './DeliveryStatus';
 import NotificationHistory from './NotificationHistory';
 
 export default function NotifyPanel({ incident }) {
-  const {
-    fetchNotificationPreview,
-    sendNotifications,
-    fetchNotificationHistory,
-    retryNotifications,
-    fetchNotificationStatus,
-  } = useApi();
 
   const addToast = useStore((s) => s.addToast);
   const userRole = useStore((s) => s.userRole) || 'operator';
@@ -62,7 +61,7 @@ export default function NotifyPanel({ incident }) {
     fetchNotificationStatus()
       .then(setProviderStatus)
       .catch(() => null);
-  }, [fetchNotificationStatus]);
+  }, []);
 
   // Load preview data
   useEffect(() => {
@@ -93,7 +92,7 @@ export default function NotifyPanel({ incident }) {
     return () => {
       active = false;
     };
-  }, [incident, channel, kind, useTranslation, fetchNotificationPreview]);
+  }, [incident, channel, kind, useTranslation]);
 
   // Load history data
   useEffect(() => {
@@ -111,7 +110,7 @@ export default function NotifyPanel({ incident }) {
     return () => {
       active = false;
     };
-  }, [incident, fetchNotificationHistory]);
+  }, [incident]);
 
   const refreshPreview = useCallback(() => {
     if (!incident?.id) return;
@@ -126,14 +125,14 @@ export default function NotifyPanel({ incident }) {
       })
       .catch((err) => setPreviewError(err.message || 'Failed to load subscriber preview'))
       .finally(() => setLoadingPreview(false));
-  }, [incident, channel, kind, useTranslation, fetchNotificationPreview]);
+  }, [incident, channel, kind, useTranslation]);
 
   const refreshHistory = useCallback(() => {
     if (!incident?.id) return;
     fetchNotificationHistory(incident.id)
       .then((res) => setHistoryBatches(res.batches || []))
       .catch((err) => console.warn('Failed to refresh history:', err));
-  }, [incident, fetchNotificationHistory]);
+  }, [incident]);
 
   // Selection handlers
   const handleToggleSelect = (subId) => {
