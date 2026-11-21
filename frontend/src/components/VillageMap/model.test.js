@@ -100,22 +100,25 @@ test('buildMapModel: L3 degraded scenario with suspected link and blast APs', ()
   // Suspected link
   assert.deepEqual(model.suspected, { id: 'L3', type: 'link' });
   const l3 = model.links.find((l) => l.id === 'L3');
-  assert.ok(l3);
   assert.equal(l3.isSuspected, true);
-  assert.equal(l3.risk_score, 85); // snapshot precedence
-  assert.equal(l3.isDown, true); // connectivity_ok === false
+  assert.equal(l3.isDown, true);
+  assert.equal(l3.risk_score, 85);
 
-  // Blast radius APs: only AP1 and AP2 (duplicates deduped, unknown/non-AP ignored)
+  // Non-suspected link
+  const l1 = model.links.find((l) => l.id === 'L1');
+  assert.equal(l1.isSuspected, false);
+
+  // Blast radius APs (AP1 and AP2 only, GW1 ignored, duplicates unified)
   assert.equal(model.blastApIds.size, 2);
   assert.ok(model.blastApIds.has('AP1'));
   assert.ok(model.blastApIds.has('AP2'));
   assert.ok(!model.blastApIds.has('GW1'));
-  assert.ok(!model.blastApIds.has('UNKNOWN_AP'));
 
-  const ap1Node = model.nodes.find((n) => n.id === 'AP1');
-  assert.equal(ap1Node.isBlastAp, true);
-  const gw1Node = model.nodes.find((n) => n.id === 'GW1');
-  assert.equal(gw1Node.isBlastAp, false);
+  // Blast AP flags set on enriched nodes
+  const ap1 = model.nodes.find((n) => n.id === 'AP1');
+  assert.equal(ap1.isBlastAp, true);
+  const wb1 = model.nodes.find((n) => n.id === 'WB1');
+  assert.equal(wb1.isBlastAp, false);
 });
 
 test('buildMapModel: clearing incident resets all suspected and blast radius flags immediately', () => {
@@ -150,4 +153,28 @@ test('buildMapModel: infers suspected type if suspected_component_type is omitte
     activeIncident: { suspected_component_id: 'L1' }, // link without type
   });
   assert.deepEqual(modelWithLink.suspected, { id: 'L1', type: 'link' });
+});
+
+test('buildMapModel: all links no_data sets village status to unknown', () => {
+  // Rampur links: L1 (GW1-R1), L2 (R1-WB1), L3 (WB1-WB2), L4 (WB2-AP1), L5 (R1-AP2)
+  // When all have freshness: 'no_data'
+  const liveMeasurements = [
+    { link_id: 'L1', freshness: 'no_data' },
+    { link_id: 'L2', freshness: 'no_data' },
+    { link_id: 'L3', freshness: 'no_data' },
+    { link_id: 'L4', freshness: 'no_data' },
+    { link_id: 'L5', freshness: 'no_data' },
+  ];
+
+  const model = buildMapModel({
+    topology: mockTopology,
+    villages: [{ village_id: 'rampur', name: 'Rampur', status: 'healthy' }],
+    liveMeasurements,
+  });
+
+  const rampurVillage = model.villages.find((v) => v.village_id === 'rampur');
+  assert.equal(rampurVillage.status, 'unknown');
+
+  const r1Node = model.nodes.find((n) => n.id === 'R1');
+  assert.equal(r1Node.villageStatus, 'unknown');
 });

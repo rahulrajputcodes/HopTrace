@@ -8,7 +8,7 @@ import { getLinkRisk } from './risk.js';
  * @param {Object} params
  * @param {Object} [params.topology]
  * @param {Array<Object>} [params.villages]
- * @param {Record<string, {risk_score?: number}>} [params.riskSnapshot]
+ * @param {Record<string, {risk_score?: number, freshness?: string, last_seen_utc?: string}>} [params.riskSnapshot]
  * @param {Array<Object>} [params.liveMeasurements]
  * @param {Object} [params.activeIncident]
  * @param {Array<Object>} [params.affectedSubscribers]
@@ -95,7 +95,72 @@ export function buildMapModel({
     }
   }
 
-  // 6. Enrich nodes with presentation metadata
+  // 6. Filter and enrich links whose endpoints are both valid
+  const rawLinks = Array.isArray(topology?.links) ? topology.links : [];
+  const links = [];
+  for (const link of rawLinks) {
+    if (
+      link &&
+      link.id &&
+      validNodeMap.has(link.source) &&
+      validNodeMap.has(link.target)
+    ) {
+      const sourceNode = validNodeMap.get(link.source);
+      const targetNode = validNodeMap.get(link.target);
+      const riskScore = getLinkRisk(link.id, riskSnapshot, liveMap);
+      const live = liveMap.get(link.id) || null;
+      const isSuspected =
+        suspected?.type === 'link' && suspected.id === link.id;
+      const isDown = live?.connectivity_ok === false;
+      const freshness = live?.freshness || riskSnapshot?.[link.id]?.freshness || (link.data_source === 'live' ? 'live' : 'simulated');
+      const lastSeenUtc = live?.last_seen_utc ?? riskSnapshot?.[link.id]?.last_seen_utc ?? null;
+      const isNoData = freshness === 'no_data';
+
+      links.push({
+        ...link,
+        sourceNode,
+        targetNode,
+        risk_score: riskScore,
+        isSuspected,
+        isDown,
+        freshness,
+        last_seen_utc: lastSeenUtc,
+        isNoData,
+        live: live
+          ? {
+              latency_ms: live.latency_ms,
+              packet_loss_pct: live.packet_loss_pct,
+              throughput_mbps: live.throughput_mbps,
+              connectivity_ok: live.connectivity_ok,
+              predicted_eta_minutes: live.predicted_eta_minutes,
+              data_source: live.data_source || 'simulated',
+              freshness,
+              last_seen_utc: lastSeenUtc,
+            }
+          : null,
+      });
+    }
+  }
+
+  // 7. If all links in a village are no_data, village status becomes "unknown"
+  const effectiveVillages = (Array.isArray(villages) ? villages : []).map((v) => {
+    if (!v || !v.village_id) return v;
+    const vLinks = links.filter(
+      (l) => l.sourceNode?.village === v.village_id || l.targetNode?.village === v.village_id
+    );
+    if (vLinks.length > 0 && vLinks.every((l) => l.isNoData)) {
+      return { ...v, status: 'unknown' };
+    }
+    return v;
+  });
+
+  for (const v of effectiveVillages) {
+    if (v && v.village_id) {
+      villageStatusMap.set(v.village_id, v.status || 'unknown');
+    }
+  }
+
+  // 8. Enrich nodes with presentation metadata
   const nodes = [];
   for (const node of validNodeMap.values()) {
     const isSuspected = suspected?.type === 'node' && suspected.id === node.id;
@@ -113,49 +178,10 @@ export function buildMapModel({
     });
   }
 
-  // 7. Filter and enrich links whose endpoints are both valid
-  const rawLinks = Array.isArray(topology?.links) ? topology.links : [];
-  const links = [];
-  for (const link of rawLinks) {
-    if (
-      link &&
-      link.id &&
-      validNodeMap.has(link.source) &&
-      validNodeMap.has(link.target)
-    ) {
-      const sourceNode = validNodeMap.get(link.source);
-      const targetNode = validNodeMap.get(link.target);
-      const riskScore = getLinkRisk(link.id, riskSnapshot, liveMap);
-      const live = liveMap.get(link.id) || null;
-      const isSuspected =
-        suspected?.type === 'link' && suspected.id === link.id;
-      const isDown = live?.connectivity_ok === false;
-
-      links.push({
-        ...link,
-        sourceNode,
-        targetNode,
-        risk_score: riskScore,
-        isSuspected,
-        isDown,
-        live: live
-          ? {
-              latency_ms: live.latency_ms,
-              packet_loss_pct: live.packet_loss_pct,
-              throughput_mbps: live.throughput_mbps,
-              connectivity_ok: live.connectivity_ok,
-              predicted_eta_minutes: live.predicted_eta_minutes,
-              data_source: live.data_source || 'simulated',
-            }
-          : null,
-      });
-    }
-  }
-
   return {
     nodes,
     links,
-    villages: Array.isArray(villages) ? villages : [],
+    villages: effectiveVillages,
     blastApIds,
     suspected,
   };

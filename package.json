@@ -9,7 +9,7 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "test": "npm run test:backend && npm run test:frontend",
     "test:backend": "python -m pytest tests -v",
-    "test:frontend": "node --test frontend/src/components/VillageMap/*.test.js frontend/src/components/NetworkView/viewPref.test.js",
+    "test:frontend": "node --test frontend/src/components/VillageMap/*.test.js frontend/src/components/NetworkView/viewPref.test.js frontend/src/lib/*.test.js",
     "lint": "npm --prefix frontend run lint",
     "build": "npm --prefix frontend run build",
     "docker:up": "docker compose up --build",

@@ -1,4 +1,5 @@
 import useStore from '../store/appStore';
+import { isHealthyForKpi } from '../lib/freshness';
 
 function KPICard({ title, value, sub, statusDot, needsAttention, children }) {
   return (
@@ -20,6 +21,9 @@ export default function KPIRibbon() {
   const allSubscribers = useStore(s => s.allSubscribers);
   const affectedSubscribers = useStore(s => s.affectedSubscribers);
   const villages = useStore(s => s.villages);
+  const topology = useStore(s => s.topology);
+  const liveMeasurements = useStore(s => s.liveMeasurements);
+  const riskSnapshot = useStore(s => s.riskSnapshot);
 
   const totalSubs = allSubscribers.length || 20;
   const affectedCount = affectedSubscribers.length;
@@ -46,6 +50,34 @@ export default function KPIRibbon() {
   const villageHealthColor = (h) =>
     h === 'healthy' ? 'bg-emerald-400' : h === 'degraded' ? 'bg-amber-400' : 'bg-red-500';
 
+  // ── Calculate link freshness and KPI health ─────────────────────────────
+  const rawLinks = topology?.links || [];
+  const liveMap = new Map();
+  (liveMeasurements || []).forEach(m => {
+    if (m?.link_id) liveMap.set(m.link_id, m);
+  });
+
+  const linksWithMetadata = rawLinks.map(l => {
+    const live = liveMap.get(l.id);
+    const snap = riskSnapshot?.[l.id];
+    const freshness = live?.freshness || snap?.freshness || (l.data_source === 'live' ? 'live' : 'simulated');
+    return {
+      ...l,
+      freshness,
+      live,
+      risk_score: snap?.risk_score ?? live?.risk_score ?? l.risk_score ?? 0,
+      isDown: live?.connectivity_ok === false || l.connectivity_ok === false,
+    };
+  });
+
+  const noDataLinks = linksWithMetadata.filter(l => l.freshness === 'no_data');
+  const noDataCount = noDataLinks.length;
+  const linksWithData = linksWithMetadata.filter(l => l.freshness !== 'no_data');
+  const healthyLinksWithData = linksWithData.filter(isHealthyForKpi);
+  const healthyPercent = linksWithData.length > 0
+    ? Math.round((healthyLinksWithData.length / linksWithData.length) * 100)
+    : 0;
+
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 px-3 pt-2 pb-1 shrink-0">
       {/* Active Connections */}
@@ -65,20 +97,32 @@ export default function KPIRibbon() {
         sub={`${collectionRate}% collected · ${paidCount} paid`}
       />
 
-      {/* Village status */}
+      {/* Village status & Link Health */}
       <KPICard
-        statusDot={allVillagesHealthy ? 'bg-emerald-400' : 'bg-amber-400'}
-        needsAttention={!allVillagesHealthy}
-        title="Village Network Status"
-        value={`${healthyVillageCount} / ${villageStatuses.length} Healthy`}
+        statusDot={allVillagesHealthy && noDataCount === 0 ? 'bg-emerald-400' : (noDataCount > 0 ? 'bg-slate-400' : 'bg-amber-400')}
+        needsAttention={!allVillagesHealthy || noDataCount > 0}
+        title="Village & Link Health"
+        value={`${healthyPercent}% Healthy`}
+        sub={
+          noDataCount > 0
+            ? `${noDataCount} No Data · ${healthyLinksWithData.length}/${linksWithData.length} monitored`
+            : `${healthyVillageCount}/${villageStatuses.length} Villages · ${healthyLinksWithData.length}/${linksWithData.length || 14} links ok`
+        }
       >
-        <div className="flex items-center gap-2 mt-0.5">
-          {villageStatuses.map(v => (
-            <div key={v.name || v.village_id} className="flex items-center gap-1">
-              <span className={`w-2 h-2 rounded-full ${villageHealthColor(v.status || v.health)}`} />
-              <span className="text-xs text-slate-400">{v.name}</span>
-            </div>
-          ))}
+        <div className="flex items-center justify-between gap-1 mt-0.5 flex-wrap">
+          <div className="flex items-center gap-1.5">
+            {villageStatuses.map(v => (
+              <div key={v.name || v.village_id} className="flex items-center gap-1">
+                <span className={`w-2 h-2 rounded-full ${villageHealthColor(v.status || v.health)}`} />
+                <span className="text-xs text-slate-400">{v.name}</span>
+              </div>
+            ))}
+          </div>
+          {noDataCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700 text-xs font-mono">
+              {noDataCount} no data
+            </span>
+          )}
         </div>
       </KPICard>
 

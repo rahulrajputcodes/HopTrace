@@ -210,3 +210,38 @@ def get_villages() -> VillagesResponse:
         ))
 
     return VillagesResponse(villages=village_healths)
+
+
+class VillageSlaItem(BaseModel):
+    village_id: str
+    village_name: str
+    uptime_pct: float
+    downtime_minutes: float
+    total_incidents: int
+    active_incidents: int
+    status: str
+
+
+class TopologySlaResponse(BaseModel):
+    window_hours: int
+    timestamp_utc: str
+    villages: Dict[str, VillageSlaItem]
+
+
+@router.get(
+    "/topology/sla",
+    response_model=TopologySlaResponse,
+    summary="Get SLA availability and outage duration per village",
+)
+def get_topology_sla(
+    window_hours: int = Query(default=24, ge=1, le=720, description="SLA calculation window in hours"),
+) -> TopologySlaResponse:
+    """Computes uptime percentage and outage minutes per village from historical and active incidents."""
+    from app.db.connection import get_db_connection
+    from app.db.repository import get_village_sla_stats
+    conn = get_db_connection()
+    try:
+        stats = get_village_sla_stats(conn, window_hours=window_hours)
+        return TopologySlaResponse(**stats)
+    finally:
+        conn.close()

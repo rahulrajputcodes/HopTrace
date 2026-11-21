@@ -30,7 +30,7 @@ export default function LabPanel() {
   const [history, setHistory] = useState([]);
   const [running, setRunning] = useState(null);
   const loading = useStore(s => s.loading);
-  const { runScenario } = useApi();
+  const { runScenario, runPathProbe } = useApi();
 
   const execute = async (payload, label) => {
     setRunning(label);
@@ -59,6 +59,17 @@ export default function LabPanel() {
   const handleCustomRun = () => {
     const payload = { scenario, severity, target_link_id: targetLinkId };
     execute(payload, `Custom: ${scenario}/${targetLinkId}`);
+  };
+
+  const handleRunProbe = async () => {
+    setRunning('Vantage Probe');
+    try {
+      await runPathProbe('WB3');
+    } catch {
+      // toast already handled in runPathProbe
+    } finally {
+      setRunning(null);
+    }
   };
 
   return (
@@ -96,6 +107,19 @@ export default function LabPanel() {
                 {running === p.label && <span className="text-xs opacity-70 animate-pulse">…</span>}
               </button>
             ))}
+
+            <button
+              type="button"
+              data-testid="run-path-probe-btn"
+              onClick={handleRunProbe}
+              disabled={!!running || loading}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition-colors disabled:opacity-50 whitespace-nowrap shadow-sm border-sky-600 bg-sky-950/80 text-sky-300 hover:bg-sky-900 cursor-pointer"
+              title="Dispatches hop-by-hop vantage point probes from GW1 to test DAG fault boundary isolation"
+            >
+              <span>🔍</span>
+              <span>Probe GW1 &rarr; APs</span>
+              {running === 'Vantage Probe' && <span className="text-xs opacity-70 animate-pulse">…</span>}
+            </button>
           </div>
 
           {/* Advanced section with custom builder dropdowns */}

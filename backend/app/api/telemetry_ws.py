@@ -46,6 +46,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.config import settings
 from app.engine.facade import get_engine
 from app.engine.time_series import get_time_series_store
 
@@ -74,10 +75,201 @@ async def _broadcast(message: Dict[str, Any]) -> None:
     _connected_clients.difference_update(dead_clients)
 
 
-async def _streaming_loop() -> None:
-    """Background coroutine: generates and broadcasts telemetry every TICK_INTERVAL_SECONDS."""
+def build_telemetry_batch(tick: int = 1) -> Dict[str, Any]:
+    """Composes a single telemetry batch for broadcast or testing."""
     engine = get_engine()
     ts_store = get_time_series_store()
+    now = datetime.now(timezone.utc).isoformat()
+    data_mode = getattr(settings, "data_mode", "demo")
+
+    topo = engine.get_topology(force_in_memory=True)
+    all_links = topo.links if topo and topo.links else []
+
+    # Safe integration with Track B agent monitor (I-2)
+    agents_snapshot = []
+    try:
+        from app.services.agent_monitor import get_status_snapshot
+        agents_snapshot = get_status_snapshot()
+    except Exception:
+        agents_snapshot = []
+
+    if data_mode == "live":
+        # In live mode: DO NOT generate noisy baselines.
+        # Emit one entry for EVERY topology link; links without real data have null metrics and freshness "no_data".
+        live_meas = engine.get_live_measurements()
+        valid_live_measurements = []
+        for link in all_links:
+            freshness, _ = engine.get_freshness(link.id)
+            if freshness in ("live", "stale") and link.id in live_meas:
+                valid_live_measurements.append(live_meas[link.id])
+
+        if valid_live_measurements:
+            ts_store.push_measurements_batch(valid_live_measurements, tick=tick)
+
+        risk_map = {r["link_id"]: r for r in ts_store.get_risk_snapshot()}
+        link_payloads = []
+
+        for link in all_links:
+            link_id = link.id
+            freshness, last_seen_utc = engine.get_freshness(link_id)
+            m = live_meas.get(link_id) if freshness in ("live", "stale") else None
+
+            if m is not None:
+                risk_info = risk_map.get(link_id, {})
+                r_score = risk_info.get("risk_score", 0.0)
+                predicted_eta = round(max(3.0, (100.0 - r_score) * 0.8), 1) if (r_score >= 35.0 and m.connectivity_ok) else None
+                link_payloads.append({
+                    "link_id": link_id,
+                    "latency_ms": m.latency_ms,
+                    "packet_loss_pct": m.packet_loss_pct,
+                    "throughput_mbps": m.throughput_mbps,
+                    "connectivity_ok": m.connectivity_ok,
+                    "data_source": "live",
+                    "risk_score": r_score,
+                    "trend": risk_info.get("trend", "stable"),
+                    "alert_level": risk_info.get("alert_level", "normal"),
+                    "ewma_latency_ms": risk_info.get("ewma_latency_ms"),
+                    "ewma_loss_pct": risk_info.get("ewma_loss_pct"),
+                    "ewma_throughput_mbps": risk_info.get("ewma_throughput_mbps"),
+                    "freshness": freshness,
+                    "last_seen_utc": last_seen_utc,
+                    "predicted_eta_minutes": predicted_eta,
+                })
+            else:
+                link_payloads.append({
+                    "link_id": link_id,
+                    "latency_ms": None,
+                    "packet_loss_pct": None,
+                    "throughput_mbps": None,
+                    "connectivity_ok": None,
+                    "data_source": "no_data",
+                    "risk_score": 0.0,
+                    "trend": "stable",
+                    "alert_level": "normal",
+                    "ewma_latency_ms": None,
+                    "ewma_loss_pct": None,
+                    "ewma_throughput_mbps": None,
+                    "freshness": "no_data",
+                    "last_seen_utc": last_seen_utc,
+                })
+
+        cascade_detected = ts_store.detect_cascade(threshold_risk=60.0) if valid_live_measurements else False
+        flapping_links = ts_store.detect_flapping_links() if valid_live_measurements else []
+
+        if any(m.connectivity_ok is False for m in valid_live_measurements):
+            network_status = "critical"
+        elif any(risk_map.get(m.component_id, {}).get("risk_score", 0.0) >= 75 for m in valid_live_measurements):
+            network_status = "critical"
+        elif cascade_detected or any(risk_map.get(m.component_id, {}).get("risk_score", 0.0) >= 40 for m in valid_live_measurements):
+            network_status = "degraded"
+        else:
+            network_status = "healthy"
+
+    else:
+        # Demo mode (default): behaviour unchanged, simulated noisy baselines
+        measurements = engine.telemetry_generator.generate_baseline_with_noise()
+
+        latest = engine.get_latest_open_incident()
+        injected_measurements = None
+        if latest and latest.status == "open" and latest.suspected_component_id:
+            run = None
+            if latest.run_id:
+                run = engine.get_run_measurements(latest.run_id)
+            if run:
+                injected_measurements = run.measurements
+
+        active_measurements = list(injected_measurements or measurements)
+
+        live_meas = engine.get_live_measurements()
+        if live_meas:
+            active_map = {m.component_id: m for m in active_measurements}
+            for comp_id, lm in live_meas.items():
+                active_map[comp_id] = lm
+            active_measurements = list(active_map.values())
+
+        ts_store.push_measurements_batch(active_measurements, tick=tick)
+        risk_map = {r["link_id"]: r for r in ts_store.get_risk_snapshot()}
+
+        link_payloads = []
+        for m in active_measurements:
+            risk_info = risk_map.get(m.component_id, {})
+            r_score = risk_info.get("risk_score", 0.0)
+            predicted_eta = round(max(3.0, (100.0 - r_score) * 0.8), 1) if (r_score >= 35.0 and m.connectivity_ok) else None
+            freshness, last_seen_utc = engine.get_freshness(m.component_id)
+            link_payloads.append({
+                "link_id": m.component_id,
+                "latency_ms": m.latency_ms,
+                "packet_loss_pct": m.packet_loss_pct,
+                "throughput_mbps": m.throughput_mbps,
+                "connectivity_ok": m.connectivity_ok,
+                "data_source": getattr(m, "data_source", "simulated"),
+                "risk_score": r_score,
+                "trend": risk_info.get("trend", "stable"),
+                "alert_level": risk_info.get("alert_level", "normal"),
+                "ewma_latency_ms": risk_info.get("ewma_latency_ms"),
+                "ewma_loss_pct": risk_info.get("ewma_loss_pct"),
+                "ewma_throughput_mbps": risk_info.get("ewma_throughput_mbps"),
+                "freshness": freshness,
+                "last_seen_utc": last_seen_utc,
+                "predicted_eta_minutes": predicted_eta,
+            })
+
+        cascade_detected = ts_store.detect_cascade(threshold_risk=60.0)
+        flapping_links = ts_store.detect_flapping_links()
+
+        max_risk = max((r["risk_score"] for r in risk_map.values()), default=0.0)
+        if max_risk >= 75 or not all(m.connectivity_ok for m in active_measurements):
+            network_status = "critical"
+        elif max_risk >= 40 or cascade_detected:
+            network_status = "degraded"
+        else:
+            network_status = "healthy"
+
+    # Active incident payload
+    latest = engine.get_latest_open_incident()
+    incident_payload = None
+    if latest and latest.status == "open":
+        incident_payload = {
+            "id": latest.id,
+            "run_id": latest.run_id,
+            "status": latest.status,
+            "suspected_component_id": latest.suspected_component_id,
+            "suspected_component_type": latest.suspected_component_type,
+            "summary": latest.summary,
+            "confidence_score": latest.confidence_score,
+            "diagnostic_score": latest.diagnostic_score,
+            "evidence": [
+                e.model_dump() if hasattr(e, "model_dump") else e
+                for e in (latest.evidence or [])
+            ],
+            "uncertainty_note": latest.uncertainty_note,
+            "created_at": latest.created_at,
+            "cause": getattr(latest, "cause", None),
+            "cause_confidence": getattr(latest, "cause_confidence", None),
+            "cause_reasoning": getattr(latest, "cause_reasoning", []),
+            "hop_trace": [
+                h.model_dump() if hasattr(h, "model_dump") else h
+                for h in (getattr(latest, "hop_trace", []) or [])
+            ],
+        }
+
+    return {
+        "type": "telemetry_batch",
+        "tick": tick,
+        "timestamp_utc": now,
+        "data_mode": data_mode,
+        "data_source": "live" if (data_mode == "live" or any(getattr(m, "data_source", "simulated") == "live" for m in link_payloads)) else "simulated",
+        "measurements": link_payloads,
+        "agents": agents_snapshot,
+        "active_incident": incident_payload,
+        "cascade_detected": cascade_detected,
+        "flapping_links": flapping_links,
+        "network_status": network_status,
+    }
+
+
+async def _streaming_loop() -> None:
+    """Background coroutine: generates and broadcasts telemetry every TICK_INTERVAL_SECONDS."""
     tick = 0
 
     while True:
@@ -88,102 +280,14 @@ async def _streaming_loop() -> None:
                 continue
 
             tick += 1
-            now = datetime.now(timezone.utc).isoformat()
+            batch = build_telemetry_batch(tick=tick)
+            await _broadcast(batch)
 
-            # Generate noisy baseline measurements for streaming
-            measurements = engine.telemetry_generator.generate_baseline_with_noise()
-
-            # If there is an active injected incident, overlay its measurements
-            latest = engine.get_latest_open_incident()
-            injected_measurements = None
-            if latest and latest.status == "open" and latest.suspected_component_id:
-                # Fetch the run measurements that triggered this incident (reads from memory or SQLite)
-                run = None
-                if latest.run_id:
-                    run = engine.get_run_measurements(latest.run_id)
-                if run:
-                    injected_measurements = run.measurements
-
-            active_measurements = list(injected_measurements or measurements)
-
-            # Overlay live ingested measurements (if any), replacing simulated values for those links
-            live_meas = engine.get_live_measurements()
-            if live_meas:
-                active_map = {m.component_id: m for m in active_measurements}
-                for comp_id, lm in live_meas.items():
-                    active_map[comp_id] = lm
-                active_measurements = list(active_map.values())
-
-            # Push into time-series store
-            ts_store.push_measurements_batch(active_measurements, tick=tick)
-
-            # Build risk snapshot
-            risk_map = {r["link_id"]: r for r in ts_store.get_risk_snapshot()}
-
-            # Compose per-link payload
-            link_payloads = []
-            for m in active_measurements:
-                risk_info = risk_map.get(m.component_id, {})
-                link_payloads.append({
-                    "link_id": m.component_id,
-                    "latency_ms": m.latency_ms,
-                    "packet_loss_pct": m.packet_loss_pct,
-                    "throughput_mbps": m.throughput_mbps,
-                    "connectivity_ok": m.connectivity_ok,
-                    "data_source": getattr(m, "data_source", "simulated"),
-                    "risk_score": risk_info.get("risk_score", 0.0),
-                    "trend": risk_info.get("trend", "stable"),
-                    "alert_level": risk_info.get("alert_level", "normal"),
-                    "ewma_latency_ms": risk_info.get("ewma_latency_ms"),
-                    "ewma_loss_pct": risk_info.get("ewma_loss_pct"),
-                    "ewma_throughput_mbps": risk_info.get("ewma_throughput_mbps"),
-                })
-
-            # Cascade + flapping detection
-            cascade_detected = ts_store.detect_cascade(threshold_risk=60.0)
-            flapping_links = ts_store.detect_flapping_links()
-
-            # Network-level status
-            max_risk = max((r["risk_score"] for r in risk_map.values()), default=0.0)
-            if max_risk >= 75 or not all(m.connectivity_ok for m in active_measurements):
-                network_status = "critical"
-            elif max_risk >= 40 or cascade_detected:
-                network_status = "degraded"
-            else:
-                network_status = "healthy"
-
-            # Active incident payload
-            incident_payload = None
-            if latest and latest.status == "open":
-                incident_payload = {
-                    "id": latest.id,
-                    "run_id": latest.run_id,
-                    "status": latest.status,
-                    "suspected_component_id": latest.suspected_component_id,
-                    "suspected_component_type": latest.suspected_component_type,
-                    "summary": latest.summary,
-                    "confidence_score": latest.confidence_score,
-                    "diagnostic_score": latest.diagnostic_score,
-                    "evidence": [
-                        e.model_dump() if hasattr(e, "model_dump") else e
-                        for e in (latest.evidence or [])
-                    ],
-                    "uncertainty_note": latest.uncertainty_note,
-                    "created_at": latest.created_at,
-                }
-
-            has_live = any(getattr(m, "data_source", "simulated") == "live" for m in active_measurements)
-            batch = {
-                "type": "telemetry_batch",
-                "tick": tick,
-                "timestamp_utc": now,
-                "data_source": "live" if has_live else "simulated",
-                "measurements": link_payloads,
-                "active_incident": incident_payload,
-                "cascade_detected": cascade_detected,
-                "flapping_links": flapping_links,
-                "network_status": network_status,
-            }
+        except asyncio.CancelledError:
+            break
+        except Exception:
+            # Never crash the streaming loop; log and continue
+            await asyncio.sleep(1.0)
 
             await _broadcast(batch)
 

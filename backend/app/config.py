@@ -51,9 +51,21 @@ class Settings(BaseSettings):
     sarvam_model: str = "sarvam-105b"
     sarvam_timeout_seconds: float = 30.0
 
+    # --- Rate Limiting ---
+    # Max requests per minute per IP (0 = disabled; > 0 = enforced with HTTP 429)
+    rate_limit_per_minute: int = 0
+
     # --- Telemetry Ingestion ---
     # Optional API key for POST /api/v1/measurements/ingest (header X-API-Key)
     ingest_api_key: str = ""
+
+    # --- Telemetry Mode & Freshness (HopTrace Part 1 Contract) ---
+    # "demo" = simulated baseline streams; "live" = real data only (unmeasured links are no_data)
+    data_mode: str = "demo"
+    # Time-to-live in seconds for a live measurement before it transitions to stale
+    live_ttl_seconds: int = 30
+    # Time in seconds without heartbeat before an agent is marked silent
+    agent_silent_seconds: int = 20
 
     # --- Run Telemetry Retention (SQLite) ---
     # Maximum number of past test runs and their measurements to retain in SQLite

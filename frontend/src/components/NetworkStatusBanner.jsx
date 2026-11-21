@@ -13,6 +13,7 @@ export default function NetworkStatusBanner() {
   const allSubscribers = useStore(s => s.allSubscribers);
   const villages = useStore(s => s.villages);
   const aiReport = useStore(s => s.aiReport);
+  const agents = useStore(s => s.agents);
   const addToast = useStore(s => s.addToast);
 
   const { fetchBusinessImpact, fetchNotificationStatus, notifyIncident } = useApi();
@@ -103,8 +104,45 @@ export default function NetworkStatusBanner() {
   );
   const villageCount = villageList.length || 3;
 
+  // ── Blind-Spot Warning (when monitoring agent is silent or missing in live mode) ─
+  const dataMode = useStore(s => s.dataMode);
+  const silentAgent = Array.isArray(agents) ? agents.find(a => a.status === 'silent') : null;
+  const isBlindSpot = Boolean(silentAgent || (dataMode === 'live' && (!agents || agents.length === 0)));
+
+  const blindSpotBanner = isBlindSpot ? (
+    <div
+      data-testid="agent-silent-banner"
+      role="alert"
+      className="w-full bg-red-950/95 border-b-2 border-red-600 px-4 py-2 flex items-center justify-between text-xs text-red-100 shrink-0 select-none shadow-md"
+    >
+      <div className="flex items-center gap-2.5 flex-wrap">
+        <span className="relative flex items-center justify-center w-2.5 h-2.5 shrink-0">
+          <span className="absolute inline-flex w-full h-full rounded-full bg-red-400 opacity-75 animate-ping" />
+          <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,1)]" />
+        </span>
+        <span className="bg-red-700 text-white font-extrabold text-[11px] px-1.5 py-0.5 rounded tracking-wide uppercase">
+          BLIND SPOT
+        </span>
+        <span className="font-semibold text-white">
+          {silentAgent
+            ? `Monitoring agent silent for ${silentAgent.silent_for_seconds ?? 0}s — network state unknown. Check router or run agent.`
+            : 'Monitoring agent not connected — network state unknown. Check router or run agent.'}
+        </span>
+      </div>
+      {silentAgent && (
+        <span className="text-red-300 text-[11px] font-mono hidden sm:inline">
+          Agent: {silentAgent.agent_id} ({silentAgent.site_id})
+        </span>
+      )}
+    </div>
+  ) : null;
+
   // ── Healthy Nominal State ────────────────────────────────────────────────
   if (!activeIncident) {
+    if (blindSpotBanner) {
+      return blindSpotBanner;
+    }
+
     return (
       <aside
         data-testid="network-status-banner"
@@ -145,103 +183,106 @@ export default function NetworkStatusBanner() {
     : providerStatus.reason || 'Outage notification provider is not configured. Set NOTIFICATION_PROVIDER=console or twilio.';
 
   return (
-    <aside
-      data-testid="network-status-banner"
-      role="status"
-      aria-live="polite"
-      aria-label="Network Fault Alert"
-      className="w-full bg-gradient-to-r from-[#2a0808] via-[#3d0b0b] to-[#2a0808] border-b-2 border-red-600 px-4 py-2.5 flex flex-col gap-1.5 text-xs text-red-100 shrink-0 select-none shadow-2xl motion-safe:transition-all motion-safe:duration-200 motion-reduce:transition-none"
-    >
-      {/* Primary fault bar: Beacon, Badges, Metrics, and Action Button */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Animated beacon beacon (respects reduced motion) */}
-          <span className="relative flex items-center justify-center w-3 h-3 shrink-0">
-            <span className="absolute inline-flex w-full h-full rounded-full bg-red-400 opacity-75 motion-safe:animate-ping motion-reduce:animate-none" />
-            <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,1)]" />
-          </span>
-
-          {/* Fault Badge */}
-          <span className="bg-red-600 text-white font-extrabold text-xs px-2 py-0.5 rounded tracking-wide uppercase shadow-sm">
-            FAULT DETECTED
-          </span>
-
-          {/* Suspected Link */}
-          <span className="text-red-200 font-medium">
-            Suspected link{' '}
-            <span className="font-mono font-bold text-white bg-red-900/90 border border-red-500 px-1.5 py-0.5 rounded shadow-inner">
-              {suspected}
+    <>
+      {blindSpotBanner}
+      <aside
+        data-testid="network-status-banner"
+        role="status"
+        aria-live="polite"
+        aria-label="Network Fault Alert"
+        className="w-full bg-gradient-to-r from-[#2a0808] via-[#3d0b0b] to-[#2a0808] border-b-2 border-red-600 px-4 py-2.5 flex flex-col gap-1.5 text-xs text-red-100 shrink-0 select-none shadow-2xl motion-safe:transition-all motion-safe:duration-200 motion-reduce:transition-none"
+      >
+        {/* Primary fault bar: Beacon, Badges, Metrics, and Action Button */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Animated beacon beacon (respects reduced motion) */}
+            <span className="relative flex items-center justify-center w-3 h-3 shrink-0">
+              <span className="absolute inline-flex w-full h-full rounded-full bg-red-400 opacity-75 motion-safe:animate-ping motion-reduce:animate-none" />
+              <span className="relative inline-flex w-2.5 h-2.5 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,1)]" />
             </span>
-          </span>
 
-          <span className="text-red-500 font-bold">·</span>
+            {/* Fault Badge */}
+            <span className="bg-red-600 text-white font-extrabold text-xs px-2 py-0.5 rounded tracking-wide uppercase shadow-sm">
+              FAULT DETECTED
+            </span>
 
-          {/* Affected Households */}
-          <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded text-red-200 font-semibold flex items-center gap-1">
-            <span>👥</span>
-            <span>{householdsText} affected</span>
-          </span>
+            {/* Suspected Link */}
+            <span className="text-red-200 font-medium">
+              Suspected link{' '}
+              <span className="font-mono font-bold text-white bg-red-900/90 border border-red-500 px-1.5 py-0.5 rounded shadow-inner">
+                {suspected}
+              </span>
+            </span>
 
-          <span className="text-red-500 font-bold">·</span>
+            <span className="text-red-500 font-bold">·</span>
 
-          {/* Monthly Revenue at Risk */}
-          <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded font-semibold text-amber-300 flex items-center gap-1">
-            <span>₹</span>
-            <span>{revenueText ? `${revenueText}/mo at risk` : 'Calculating revenue…'}</span>
-          </span>
+            {/* Affected Households */}
+            <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded text-red-200 font-semibold flex items-center gap-1">
+              <span>👥</span>
+              <span>{householdsText} affected</span>
+            </span>
 
-          <span className="text-red-500 font-bold">·</span>
+            <span className="text-red-500 font-bold">·</span>
 
-          {/* Outage Duration Timer */}
-          <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded text-red-200 font-medium flex items-center gap-1">
-            <span>⏱</span>
-            <span>Outage: {timeSince}</span>
-          </span>
+            {/* Monthly Revenue at Risk */}
+            <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded font-semibold text-amber-300 flex items-center gap-1">
+              <span>₹</span>
+              <span>{revenueText ? `${revenueText}/mo at risk` : 'Calculating revenue…'}</span>
+            </span>
+
+            <span className="text-red-500 font-bold">·</span>
+
+            {/* Outage Duration Timer */}
+            <span className="bg-red-950/70 border border-red-700/60 px-2 py-0.5 rounded text-red-200 font-medium flex items-center gap-1">
+              <span>⏱</span>
+              <span>Outage: {timeSince}</span>
+            </span>
+          </div>
+
+          {/* Primary Action Button: Notify affected subscribers */}
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={handleNotify}
+              disabled={!isAvailable || notifying}
+              title={tooltipText}
+              aria-disabled={!isAvailable || notifying}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
+                notified
+                  ? 'bg-emerald-700 text-white cursor-default'
+                  : isAvailable
+                  ? 'bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 cursor-pointer shadow-amber-500/20'
+                  : 'bg-slate-800/80 border border-slate-700 text-slate-400 cursor-not-allowed opacity-60'
+              }`}
+            >
+              {notifying ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin shrink-0" />
+                  <span>Sending notifications…</span>
+                </>
+              ) : notified ? (
+                <>
+                  <span>✓</span>
+                  <span>Notifications Sent</span>
+                </>
+              ) : (
+                <>
+                  <span>📢</span>
+                  <span>Notify affected subscribers</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
-        {/* Primary Action Button: Notify affected subscribers */}
-        <div className="flex items-center">
-          <button
-            type="button"
-            onClick={handleNotify}
-            disabled={!isAvailable || notifying}
-            title={tooltipText}
-            aria-disabled={!isAvailable || notifying}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-md ${
-              notified
-                ? 'bg-emerald-700 text-white cursor-default'
-                : isAvailable
-                ? 'bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 cursor-pointer shadow-amber-500/20'
-                : 'bg-slate-800/80 border border-slate-700 text-slate-400 cursor-not-allowed opacity-60'
-            }`}
-          >
-            {notifying ? (
-              <>
-                <span className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin shrink-0" />
-                <span>Sending notifications…</span>
-              </>
-            ) : notified ? (
-              <>
-                <span>✓</span>
-                <span>Notifications Sent</span>
-              </>
-            ) : (
-              <>
-                <span>📢</span>
-                <span>Notify affected subscribers</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Short Next step line (from explanation or fault class) */}
-      {nextStep && (
-        <div className="flex items-center gap-2 text-xs font-medium text-amber-200/95 bg-black/40 border border-amber-500/40 px-2.5 py-1 rounded-md max-w-fit shadow-inner">
-          <span className="text-amber-400 font-bold">⚡ Next step:</span>
-          <span>{nextStep}</span>
-        </div>
-      )}
-    </aside>
+        {/* Short Next step line (from explanation or fault class) */}
+        {nextStep && (
+          <div className="flex items-center gap-2 text-xs font-medium text-amber-200/95 bg-black/40 border border-amber-500/40 px-2.5 py-1 rounded-md max-w-fit shadow-inner">
+            <span className="text-amber-400 font-bold">⚡ Next step:</span>
+            <span>{nextStep}</span>
+          </div>
+        )}
+      </aside>
+    </>
   );
 }

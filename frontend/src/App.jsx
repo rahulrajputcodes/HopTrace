@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import useStore from './store/appStore';
 import { useLiveTelemetry } from './hooks/useLiveTelemetry';
 import { useApi } from './hooks/useApi';
@@ -13,28 +13,34 @@ import TelemetryCharts from './components/TelemetryCharts';
 import SubscriberOps from './components/SubscriberOps';
 import LabPanel from './components/LabPanel';
 import BusinessImpactPanel from './components/BusinessImpactPanel';
-import SarvamKeyModal from './components/SarvamKeyModal';
 import ToastStack from './components/ToastStack';
 import AlertOverlay from './components/AlertOverlay/AlertOverlay';
 
 export default function App() {
   useLiveTelemetry();
 
-  const { fetchAll } = useApi();
-  const [sarvamOpen, setSarvamOpen] = useState(false);
+  const { fetchAll, fetchAgentStatus } = useApi();
   const selectedElement = useStore(s => s.selectedElement);
   const setSelectedElement = useStore(s => s.setSelectedElement);
   const dashboardMode = useStore(s => s.dashboardMode);
+  const dataMode = useStore(s => s.dataMode);
 
   useEffect(() => {
     fetchAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (dataMode !== 'live') return undefined;
+    fetchAgentStatus();
+    const interval = setInterval(fetchAgentStatus, 5000);
+    return () => clearInterval(interval);
+  }, [dataMode, fetchAgentStatus]);
+
   return (
     <div className="min-h-screen bg-[#050d1a] text-slate-200 flex flex-col overflow-hidden" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* ── Top Bar ──────────────────────────────────────────────────── */}
-      <TopBar onOpenSarvam={() => setSarvamOpen(true)} onRefresh={fetchAll} />
+      <TopBar onRefresh={fetchAll} />
 
       {/* ── Network Health Single Source Status Banner ──────────────── */}
       <NetworkStatusBanner />
@@ -130,9 +136,6 @@ export default function App() {
           </div>
         </div>
       )}
-
-      {/* ── Sarvam Key Modal ──────────────────────────────────────────── */}
-      {sarvamOpen && <SarvamKeyModal onClose={() => setSarvamOpen(false)} />}
 
       {/* ── Toast Stack ───────────────────────────────────────────────── */}
       <ToastStack />

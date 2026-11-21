@@ -2,16 +2,28 @@ import { useEffect, useRef } from 'react';
 import useStore from '../store/appStore';
 
 export function useLiveTelemetry() {
-  const setWsConnected = useStore(s => s.setWsConnected);
-  const setLiveTelemetry = useStore(s => s.setLiveTelemetry);
-  const setRiskSnapshot = useStore(s => s.setRiskSnapshot);
-  const addToast = useStore(s => s.addToast);
+  const setWsConnected = useStore((s) => s.setWsConnected);
+  const setLiveTelemetry = useStore((s) => s.setLiveTelemetry);
+  const setRiskSnapshot = useStore((s) => s.setRiskSnapshot);
+  const addToast = useStore((s) => s.addToast);
   const wsRef = useRef(null);
   const reconnectTimer = useRef(null);
+  const watchdogTimer = useRef(null);
   const attempts = useRef(0);
 
   useEffect(() => {
     let alive = true;
+
+    function resetWatchdog() {
+      clearTimeout(watchdogTimer.current);
+      // If no message arrives within 35 seconds, trigger a reconnect
+      watchdogTimer.current = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          console.warn('[WS] Telemetry heartbeat timeout (35s) — reconnecting');
+          wsRef.current.close();
+        }
+      }, 35000);
+    }
 
     function connect() {
       if (!alive) return;
@@ -23,9 +35,11 @@ export function useLiveTelemetry() {
         ws.onopen = () => {
           attempts.current = 0;
           setWsConnected(true);
+          resetWatchdog();
         };
 
         ws.onmessage = (evt) => {
+          resetWatchdog();
           try {
             const msg = JSON.parse(evt.data);
             if (msg.type === 'telemetry_batch') {
@@ -45,8 +59,10 @@ export function useLiveTelemetry() {
 
         ws.onclose = () => {
           setWsConnected(false);
+          clearTimeout(watchdogTimer.current);
           if (!alive) return;
-          const delay = Math.min(3000 * Math.pow(1.5, attempts.current), 30000);
+          // Exponential backoff with jitter: 1s, 1.5s, 2.25s ... capped at 15s
+          const delay = Math.min(1000 * Math.pow(1.5, attempts.current), 15000) + Math.random() * 300;
           attempts.current += 1;
           reconnectTimer.current = setTimeout(connect, delay);
         };
@@ -64,6 +80,7 @@ export function useLiveTelemetry() {
     return () => {
       alive = false;
       clearTimeout(reconnectTimer.current);
+      clearTimeout(watchdogTimer.current);
       if (wsRef.current) wsRef.current.close();
       setWsConnected(false);
     };

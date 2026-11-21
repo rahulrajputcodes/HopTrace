@@ -10,6 +10,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import useStore from '../../store/appStore';
+import { formatLastSeen } from '../../lib/freshness';
 
 const POSITIONS = {
   GW1: { x: 40,  y: 310 },
@@ -52,6 +53,7 @@ function riskColor(score) {
 function NetworkNode({ data }) {
   const meta = NODE_TYPES_META[data.nodeType] || NODE_TYPES_META.access_point;
   const isSuspected = data.isSuspected;
+  const isNoData = data.isNoData;
   const vColor = VILLAGE_COLORS[data.village] || '#64748b';
 
   return (
@@ -65,18 +67,21 @@ function NetworkNode({ data }) {
       <div
         className="relative flex flex-col items-center gap-0.5 px-2 py-2 rounded-xl border-2 cursor-pointer transition-transform hover:scale-105"
         style={{
-          background: meta.bg,
-          borderColor: isSuspected ? '#ef4444' : meta.color,
-          boxShadow: `0 0 12px ${isSuspected ? '#ef444455' : meta.color + '44'}`,
+          background: isNoData ? '#1e293b' : meta.bg,
+          borderColor: isSuspected ? '#ef4444' : isNoData ? '#64748b' : meta.color,
+          boxShadow: `0 0 12px ${isSuspected ? '#ef444455' : isNoData ? '#64748b33' : meta.color + '44'}`,
           minWidth: 64,
+          borderStyle: isNoData ? 'dashed' : 'solid',
         }}
       >
         <span className="text-lg leading-none">{meta.icon}</span>
         <span className="text-white text-xs font-bold leading-tight text-center">{data.label}</span>
         <span
           className={`w-2 h-2 rounded-full ${
+            isNoData ? 'bg-slate-500' :
             data.status === 'healthy' ? 'bg-emerald-400' :
             data.status === 'degraded' ? 'bg-amber-400 animate-pulse' :
+            data.status === 'unknown' ? 'bg-slate-500' :
             'bg-red-500 animate-pulse'
           }`}
         />
@@ -104,19 +109,37 @@ export default function TopologyCanvas() {
 
   const suspectedId = activeIncident?.suspected_component_id;
 
-  const rfNodes = useMemo(() => (topology.nodes || []).map(node => ({
-    id: node.id,
-    type: 'networkNode',
-    position: POSITIONS[node.id] || { x: 400, y: 300 },
-    data: {
-      label: node.id,
-      nodeType: node.type,
-      status: node.status || 'healthy',
-      village: node.village,
-      isSuspected: suspectedId === node.id,
-    },
-    style: { background: 'transparent', border: 'none', padding: 0 },
-  })), [topology.nodes, suspectedId]);
+  const rfNodes = useMemo(() => {
+    const liveMap = new Map();
+    (liveMeasurements || []).forEach(m => {
+      if (m?.link_id) liveMap.set(m.link_id, m);
+    });
+
+    return (topology.nodes || []).map(node => {
+      // Check if all connected links to this node are no_data
+      const connectedLinks = (topology.links || []).filter(l => l.source === node.id || l.target === node.id);
+      const allLinksNoData = connectedLinks.length > 0 && connectedLinks.every(l => {
+        const m = liveMap.get(l.id);
+        const freshness = m?.freshness || riskSnapshot?.[l.id]?.freshness;
+        return freshness === 'no_data';
+      });
+
+      return {
+        id: node.id,
+        type: 'networkNode',
+        position: POSITIONS[node.id] || { x: 400, y: 300 },
+        data: {
+          label: node.id,
+          nodeType: node.type,
+          status: allLinksNoData ? 'unknown' : (node.status || 'healthy'),
+          village: node.village,
+          isSuspected: suspectedId === node.id,
+          isNoData: allLinksNoData,
+        },
+        style: { background: 'transparent', border: 'none', padding: 0 },
+      };
+    });
+  }, [topology.nodes, topology.links, liveMeasurements, riskSnapshot, suspectedId]);
 
   const rfEdges = useMemo(() => {
     const liveMap = {};
@@ -125,13 +148,25 @@ export default function TopologyCanvas() {
     return (topology.links || []).map(link => {
       const risk = riskSnapshot[link.id]?.risk_score ?? liveMap[link.id]?.risk_score ?? 0;
       const live = liveMap[link.id];
+      const freshness = live?.freshness || riskSnapshot[link.id]?.freshness || (live?.data_source === 'live' ? 'live' : 'simulated');
       const isSuspected = suspectedId === link.id;
-      const color = isSuspected ? '#ef4444' : riskColor(risk);
+      const isNoData = freshness === 'no_data';
+      const isStale = freshness === 'stale';
+
+      const color = isSuspected
+        ? '#ef4444'
+        : isNoData
+        ? '#64748b'
+        : isStale
+        ? '#f59e0b'
+        : riskColor(risk);
       const strokeWidth = isSuspected ? 4 : Math.max(1.5, 1.5 + risk / 40);
       const isDown = live?.connectivity_ok === false;
 
       let label = '';
-      if (live) {
+      if (isNoData) {
+        label = `No data (${formatLastSeen(live?.last_seen_utc)})`;
+      } else if (live) {
         label = `${(live.latency_ms || 0).toFixed(0)}ms · ${(live.packet_loss_pct || 0).toFixed(0)}%`;
       } else if (link.latency_ms !== undefined) {
         label = `${link.latency_ms}ms`;
@@ -146,10 +181,17 @@ export default function TopologyCanvas() {
         labelBgStyle: { fill: '#050d1a', fillOpacity: 0.85 },
         labelBgPadding: [3, 4],
         labelBgBorderRadius: 4,
-        style: { stroke: color, strokeWidth, strokeDasharray: isDown ? '6 3' : undefined },
-        animated: !isDown && risk < 60,
+        style: { stroke: color, strokeWidth, strokeDasharray: (isDown || isNoData || isStale) ? '6 3' : undefined },
+        animated: !isDown && !isNoData && risk < 60,
         markerEnd: { type: MarkerType.ArrowClosed, color },
-        data: { ...link, risk_score: risk, data_source: live?.data_source || 'simulated' },
+        data: {
+          ...link,
+          risk_score: risk,
+          data_source: live?.data_source || 'simulated',
+          freshness,
+          last_seen_utc: live?.last_seen_utc,
+          isNoData,
+        },
       };
     });
   }, [topology.links, riskSnapshot, liveMeasurements, suspectedId]);
@@ -183,6 +225,10 @@ export default function TopologyCanvas() {
               <span>{l}</span>
             </div>
           ))}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 pt-0.5 border-t border-slate-800">
+            <span className="w-4 h-0.5 rounded border-b border-dashed border-slate-500" />
+            <span>No data</span>
+          </div>
         </div>
       </div>
 

@@ -47,7 +47,10 @@ CREATE TABLE IF NOT EXISTS incidents (
     evidence TEXT NOT NULL DEFAULT '[]',
     uncertainty_note TEXT,
     data_source TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    extras_json TEXT,
+    resolved_at TEXT,
+    duration_seconds INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -71,6 +74,15 @@ CREATE TABLE IF NOT EXISTS measurements (
 
 CREATE INDEX IF NOT EXISTS idx_measurements_run_id ON measurements (run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs (created_at);
+
+CREATE TABLE IF NOT EXISTS learned_baselines (
+    link_id TEXT PRIMARY KEY,
+    sample_count INTEGER NOT NULL,
+    latency_ms REAL,
+    packet_loss_pct REAL,
+    throughput_mbps REAL,
+    updated_at TEXT NOT NULL
+);
 """
 
 # ── Demo Data — 20 subscribers, 3 villages ───────────────────────────────────
@@ -213,6 +225,18 @@ def init_db(
             pass
         try:
             conn.execute("ALTER TABLE subscribers ADD COLUMN preferred_language TEXT DEFAULT 'hi';")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE incidents ADD COLUMN extras_json TEXT;")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE incidents ADD COLUMN resolved_at TEXT;")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE incidents ADD COLUMN duration_seconds INTEGER;")
         except sqlite3.OperationalError:
             pass
 

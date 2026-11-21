@@ -11,7 +11,6 @@ Follows docs/api-contract.md Section 10 with enhanced Sarvam AI voice capabiliti
 from __future__ import annotations
 
 import sqlite3
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.config import settings
@@ -35,10 +34,9 @@ router = APIRouter(tags=["explanations"])
 
 def _resolve_active_provider(
     default_provider: ExplanationProvider,
-    api_key_override: Optional[str] = None,
 ) -> ExplanationProvider:
-    """Selects Sarvam provider if dynamic or configured API key exists, else defaults to injected provider."""
-    effective_key = (api_key_override or "").strip() or settings.sarvam_api_key.strip()
+    """Selects Sarvam provider if server-configured API key exists, else defaults to injected provider."""
+    effective_key = settings.sarvam_api_key.strip()
     if effective_key:
         return SarvamExplanationProvider(
             api_key=effective_key,
@@ -80,7 +78,7 @@ def explain_incident(
             detail=f"Incident '{incident_id}' not found",
         )
 
-    active_provider = _resolve_active_provider(provider, payload.api_key)
+    active_provider = _resolve_active_provider(provider)
 
     # 2. Invoke explanation provider
     try:
@@ -111,7 +109,7 @@ def synthesize_incident_audio(
     provider: ExplanationProvider = Depends(get_explanation_provider),
 ) -> AudioSpeechResponse:
     """Converts diagnostic briefing text into neural voice audio using Sarvam AI Bulbul TTS."""
-    active_provider = _resolve_active_provider(provider, payload.api_key)
+    active_provider = _resolve_active_provider(provider)
 
     try:
         audio_b64 = active_provider.generate_speech(
@@ -148,7 +146,7 @@ def synthesize_general_audio(
     provider: ExplanationProvider = Depends(get_explanation_provider),
 ) -> AudioSpeechResponse:
     """Converts arbitrary briefing text into neural voice audio using Sarvam AI Bulbul TTS."""
-    active_provider = _resolve_active_provider(provider, payload.api_key)
+    active_provider = _resolve_active_provider(provider)
 
     try:
         audio_b64 = active_provider.generate_speech(

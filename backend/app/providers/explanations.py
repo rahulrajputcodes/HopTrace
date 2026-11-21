@@ -81,8 +81,7 @@ class UnavailableExplanationProvider(ExplanationProvider):
             ExplanationProviderUnavailableError: Always, indicating the explanation service is unavailable.
         """
         raise ExplanationProviderUnavailableError(
-            "The configured incident explanation provider is not currently available. "
-            "Please provide a Sarvam API key in the top bar or set SARVAM_API_KEY in .env."
+            "AI explanations are not configured on this server (set SARVAM_API_KEY)."
         )
 
 

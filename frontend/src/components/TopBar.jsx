@@ -10,10 +10,9 @@ const LANG_OPTIONS = [
   { code: 'bn', label: 'বাংলা' },
 ];
 
-export default function TopBar({ onOpenSarvam, onRefresh }) {
+export default function TopBar({ onRefresh }) {
   const backendOnline = useStore(s => s.backendOnline);
   const wsConnected = useStore(s => s.wsConnected);
-  const sarvamApiKey = useStore(s => s.sarvamApiKey);
   const sarvamLanguage = useStore(s => s.sarvamLanguage);
   const setSarvamLanguage = useStore(s => s.setSarvamLanguage);
   const dashboardMode = useStore(s => s.dashboardMode);
@@ -22,6 +21,9 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
   const networkStatus = useStore(s => s.networkStatus);
   const cascadeDetected = useStore(s => s.cascadeDetected);
   const telemetryDataSource = useStore(s => s.telemetryDataSource);
+  const dataMode = useStore(s => s.dataMode);
+  const setDataMode = useStore(s => s.setDataMode);
+  const agents = useStore(s => s.agents);
   const liveMeasurements = useStore(s => s.liveMeasurements);
   const topology = useStore(s => s.topology);
   const activeIncident = useStore(s => s.activeIncident);
@@ -34,13 +36,18 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
 
   const isLive =
     telemetryDataSource === 'live' ||
+    dataMode === 'live' ||
     topology?.data_source === 'live' ||
     (Array.isArray(liveMeasurements) && liveMeasurements.some(m => m.data_source === 'live'));
 
+  const silentAgent = Array.isArray(agents) ? agents.find(a => a.status === 'silent') : null;
+  const isAgentSilent = Boolean(silentAgent);
+  const hasAgents = Array.isArray(agents) && agents.length > 0;
+
   return (
-    <header className="flex items-center gap-3 px-4 py-2 bg-[#060e1c] border-b border-slate-800 shrink-0">
+    <header className="flex items-center gap-3 px-4 py-2 bg-[#060e1c] border-b border-slate-800 shrink-0 flex-wrap sm:flex-nowrap">
       {/* Brand */}
-      <div className="flex items-center gap-2 mr-2">
+      <div className="flex items-center gap-2 mr-2 shrink-0">
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-sm">HT</div>
         <div className="hidden md:block">
           <div className="text-white font-bold text-sm leading-tight">HopTrace</div>
@@ -59,18 +66,73 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
         {cascadeDetected && <span className="ml-1 text-red-300">· CASCADE</span>}
       </div>
 
-      {/* Live vs Simulated Telemetry Badge */}
-      <div
+      {/* Interactive Mode Switcher: Demo Mode <-> Live Edge Telemetry */}
+      <button
+        type="button"
         data-testid="telemetry-source-badge"
-        className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${
+        onClick={() => {
+          const next = dataMode === 'live' ? 'demo' : 'live';
+          setDataMode(next);
+          if (next === 'live') {
+            const cur = useStore.getState().liveMeasurements;
+            if (cur && cur.length > 0) {
+              const noDataBatch = cur.map(m => ({
+                ...m,
+                freshness: 'no_data',
+                latency_ms: null,
+                packet_loss_pct: null,
+                throughput_mbps: null,
+              }));
+              useStore.getState().setLiveTelemetry({
+                data_mode: 'live',
+                data_source: 'live',
+                measurements: noDataBatch,
+              });
+            }
+          }
+        }}
+        title={`Click to switch between Demo Simulation and Live Telemetry (Current: ${dataMode === 'live' ? 'Live' : 'Demo'})`}
+        className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold transition-all cursor-pointer hover:scale-105 active:scale-95 ${
           isLive
-            ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
-            : 'border-slate-700 bg-slate-900 text-slate-400'
+            ? 'border-emerald-600 bg-emerald-950 text-emerald-300 hover:border-emerald-400'
+            : 'border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-500 hover:text-slate-200'
         }`}
       >
         <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
-        <span>{isLive ? '● Live' : '○ Simulated'}</span>
-      </div>
+        <span>{isLive ? '● Live Telemetry' : '○ Demo Mode'}</span>
+        <span className="text-[10px] text-slate-500 ml-0.5 uppercase tracking-wider font-mono">⇄ Switch</span>
+      </button>
+
+      {/* Monitoring Agent Status Chip (live mode only, hidden in demo) */}
+      {dataMode === 'live' && (
+        <div
+          data-testid="agent-status-chip"
+          className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${
+            !hasAgents
+              ? 'border-slate-700 bg-slate-900 text-slate-400'
+              : isAgentSilent
+              ? 'border-red-700 bg-red-950 text-red-300'
+              : 'border-emerald-700 bg-emerald-950 text-emerald-300'
+          }`}
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              !hasAgents
+                ? 'bg-slate-500'
+                : isAgentSilent
+                ? 'bg-red-400 animate-pulse'
+                : 'bg-emerald-400'
+            }`}
+          />
+          <span className="capitalize">
+            {!hasAgents
+              ? 'no agent connected'
+              : isAgentSilent
+              ? `silent ${silentAgent.silent_for_seconds ?? 0}s`
+              : 'online'}
+          </span>
+        </div>
+      )}
 
       <div className="flex-1" />
 
@@ -106,18 +168,6 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
         ))}
       </div>
 
-      {/* Sarvam key button */}
-      <button
-        onClick={onOpenSarvam}
-        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-          sarvamApiKey
-            ? 'bg-purple-950 border-purple-700 text-purple-300 hover:bg-purple-900'
-            : 'bg-slate-800 border-slate-600 text-slate-300 hover:bg-slate-700'
-        }`}
-      >
-        {sarvamApiKey ? '⚡ Sarvam Active' : '🔑 Connect Sarvam AI'}
-      </button>
-
       {/* WS indicator */}
       <div className={`flex items-center gap-1 text-xs ${wsConnected ? 'text-emerald-400' : 'text-slate-500'}`}>
         <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
@@ -131,7 +181,7 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
       </div>
 
       {/* Demo Voice & Alert Controls */}
-      <div className="flex items-center gap-1.5" aria-label="Demo Voice Controls">
+      <div className="hidden lg:flex items-center gap-1.5" aria-label="Demo Voice Controls">
         <button
           type="button"
           onClick={() => setAlertArmed(prev => !prev)}

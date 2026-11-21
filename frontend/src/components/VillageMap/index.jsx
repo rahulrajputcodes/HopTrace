@@ -24,6 +24,7 @@ import {
 import { telemetryLabel, riskColor, villageStatusColor } from './theme';
 import { getLinkStrokeWidth, getLinkDashArray } from './risk';
 import { buildMapModel } from './model';
+import { formatLastSeen } from '../../lib/freshness';
 import {
   createNodeIcon,
   createSuspectedRingIcon,
@@ -370,15 +371,21 @@ export default function VillageMap() {
           model.links.map((link) => {
             const p1 = [link.sourceNode.lat, link.sourceNode.lon];
             const p2 = [link.targetNode.lat, link.targetNode.lon];
-            const strokeCol = link.isSuspected
+            const strokeCol = link.isNoData
+              ? '#64748b'
+              : link.freshness === 'stale'
+              ? '#f59e0b'
+              : link.isSuspected
               ? '#ef4444'
               : riskColor(link.risk_score);
             const strokeW = getLinkStrokeWidth(link.risk_score, link.isSuspected);
-            const strokeDash = getLinkDashArray(link.live?.connectivity_ok);
+            const strokeDash = link.isNoData || link.freshness === 'stale'
+              ? '6 3'
+              : getLinkDashArray(link.live?.connectivity_ok);
 
             return (
               <Polyline
-                key={`link-${link.id}-${link.isSuspected}-${link.isDown}-${Math.round(link.risk_score)}`}
+                key={`link-${link.id}-${link.isSuspected}-${link.isDown}-${Math.round(link.risk_score)}-${link.freshness}`}
                 positions={[p1, p2]}
                 pane="linksPane"
                 pathOptions={{
@@ -401,38 +408,62 @@ export default function VillageMap() {
                         frequency: link.frequency,
                         status: link.isDown ? 'down' : 'up',
                         data_source: link.live?.data_source || 'simulated',
+                        freshness: link.freshness,
+                        last_seen_utc: link.last_seen_utc,
                       },
                     });
                   },
                 }}
               >
+                <Tooltip sticky>
+                  <span className="text-xs font-medium">
+                    {link.id}: {link.isNoData ? 'No data' : `Risk ${link.risk_score}`} · {formatLastSeen(link.last_seen_utc)}
+                  </span>
+                </Tooltip>
                 <Popup className="hoptrace-popup">
                   <div className="space-y-1.5 text-xs text-slate-200">
                     <div className="flex items-center justify-between border-b border-slate-700/60 pb-1">
                       <span className="font-semibold text-white">Link: {link.id}</span>
                       <div className="flex items-center gap-1.5">
-                        <span
-                          className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
-                            link.live?.data_source === 'live'
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-700/60'
-                              : 'bg-slate-800 text-slate-400 border border-slate-700'
-                          }`}
-                        >
-                          {link.live?.data_source === 'live' ? '● Live' : '○ Simulated'}
-                        </span>
-                        <span
-                          className="px-1.5 py-0.5 rounded text-xs font-medium"
-                          style={{
-                            backgroundColor: `${riskColor(link.risk_score)}22`,
-                            color: riskColor(link.risk_score),
-                          }}
-                        >
-                          Risk {link.risk_score}
-                        </span>
+                        {link.isNoData ? (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-slate-800 text-slate-400 border border-slate-700">
+                            ○ No data
+                          </span>
+                        ) : link.freshness === 'stale' ? (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-semibold bg-amber-950/80 text-amber-400 border border-amber-600/60">
+                            ⚠ Stale
+                          </span>
+                        ) : (
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                              link.freshness === 'live' || link.live?.data_source === 'live'
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-700/60'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700'
+                            }`}
+                          >
+                            {link.freshness === 'live' || link.live?.data_source === 'live' ? '● Live' : '○ Simulated'}
+                          </span>
+                        )}
+                        {link.isNoData ? (
+                          <span className="px-1.5 py-0.5 rounded text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                            Risk —
+                          </span>
+                        ) : (
+                          <span
+                            className="px-1.5 py-0.5 rounded text-xs font-medium"
+                            style={{
+                              backgroundColor: `${riskColor(link.risk_score)}22`,
+                              color: riskColor(link.risk_score),
+                            }}
+                          >
+                            Risk {link.risk_score}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-400">
-                      {link.source} &rarr; {link.target}
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>{link.source} &rarr; {link.target}</span>
+                      <span className="italic text-[11px]">{formatLastSeen(link.last_seen_utc)}</span>
                     </div>
 
                     {link.distance_km !== undefined && link.distance_km !== null && (
@@ -488,27 +519,33 @@ export default function VillageMap() {
                         );
                       })()}
 
-                    {link.live && (
-                      <>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-400">Latency:</span>
-                          <span className="font-mono">
-                            {(link.live.latency_ms || 0).toFixed(1)} ms
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-400">Packet Loss:</span>
-                          <span className="font-mono">
-                            {(link.live.packet_loss_pct || 0).toFixed(1)}%
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-slate-400">Throughput:</span>
-                          <span className="font-mono">
-                            {(link.live.throughput_mbps || 0).toFixed(1)} Mbps
-                          </span>
-                        </div>
-                      </>
+                    {link.isNoData ? (
+                      <div className="py-1 px-2 text-xs text-slate-400 bg-slate-800/40 rounded border border-slate-700/50">
+                        No telemetry reported — agent may be silent.
+                      </div>
+                    ) : (
+                      link.live && (
+                        <>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-400">Latency:</span>
+                            <span className="font-mono">
+                              {(link.live.latency_ms || 0).toFixed(1)} ms
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-400">Packet Loss:</span>
+                            <span className="font-mono">
+                              {(link.live.packet_loss_pct || 0).toFixed(1)}%
+                            </span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-slate-400">Throughput:</span>
+                            <span className="font-mono">
+                              {(link.live.throughput_mbps || 0).toFixed(1)} Mbps
+                            </span>
+                          </div>
+                        </>
+                      )
                     )}
                     {link.isSuspected && (
                       <div className="pt-1 text-xs text-red-400 font-semibold flex items-center gap-1">

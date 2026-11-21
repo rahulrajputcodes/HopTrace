@@ -82,7 +82,7 @@ def test_explain_provider_unavailable_returns_503(client: TestClient, isolated_d
         json={"language": "hi"},
     )
     assert resp.status_code == 503
-    assert "not currently available" in resp.json()["detail"].lower()
+    assert "not configured on this server" in resp.json()["detail"].lower()
 
 
 def test_explain_success_with_provider(client: TestClient, isolated_db: str) -> None:
@@ -307,3 +307,17 @@ def test_sarvam_provider_missing_key_via_api_returns_503(
     )
     assert resp.status_code == 503
     assert "sarvam api key is not configured" in resp.json()["detail"].lower()
+
+
+def test_explain_request_body_api_key_is_ignored(client: TestClient, isolated_db: str, monkeypatch) -> None:
+    """Extra api_key supplied in request body is ignored; key comes only from settings.sarvam_api_key."""
+    monkeypatch.setattr(settings, "sarvam_api_key", "")
+    monkeypatch.setattr(settings, "explanation_provider", "unavailable")
+
+    # Body with api_key should be ignored and still hit unavailable provider (503)
+    resp = client.post(
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
+        json={"language": "hi", "api_key": "some-untrusted-browser-key"},
+    )
+    assert resp.status_code == 503
+    assert "not configured on this server" in resp.json()["detail"].lower()

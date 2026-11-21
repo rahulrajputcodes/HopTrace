@@ -91,13 +91,13 @@ export function useApi() {
     }
   }, [store]);
 
-  const explainIncident = useCallback(async (incidentId, language, apiKey) => {
+  const explainIncident = useCallback(async (incidentId, language) => {
     store.setAiLoading(true);
     store.setAiReport(null);
     try {
       const result = await api(`/incidents/${incidentId}/explain`, {
         method: 'POST',
-        body: JSON.stringify({ language, api_key: apiKey || undefined }),
+        body: JSON.stringify({ language }),
       });
       // result.explanation may be a JSON string or object
       let report = result.explanation;
@@ -116,11 +116,11 @@ export function useApi() {
     }
   }, [store]);
 
-  const synthesizeAudio = useCallback(async (text, languageCode, speaker, apiKey) => {
+  const synthesizeAudio = useCallback(async (text, languageCode, speaker) => {
     try {
       const result = await api('/explanations/audio', {
         method: 'POST',
-        body: JSON.stringify({ text, language_code: languageCode, speaker, api_key: apiKey || undefined }),
+        body: JSON.stringify({ text, language_code: languageCode, speaker }),
       });
       return result?.audio_base64 || null;
     } catch (err) {
@@ -172,6 +172,72 @@ export function useApi() {
     });
   }, []);
 
+  const fetchAgentStatus = useCallback(async () => {
+    try {
+      const res = await api('/agent/status');
+      if (res?.agents) {
+        store.setAgents(res.agents);
+      }
+      return res;
+    } catch {
+      return null;
+    }
+  }, [store]);
+
+  const runPathProbe = useCallback(async (failedNodeId = 'WB3') => {
+    store.setLoading(true);
+    try {
+      const isFailed = Boolean(failedNodeId);
+      const results = [
+        { node_id: 'GW1', reachable: true, latency_ms: 0.5, packet_loss_pct: 0.0 },
+        { node_id: 'R1', reachable: true, latency_ms: 12.4, packet_loss_pct: 0.0 },
+        { node_id: 'WB1', reachable: true, latency_ms: 14.2, packet_loss_pct: 0.0 },
+        { node_id: 'WB2', reachable: true, latency_ms: 22.0, packet_loss_pct: 0.0 },
+        { node_id: 'AP1', reachable: true, latency_ms: 24.1, packet_loss_pct: 0.0 },
+        { node_id: 'AP2', reachable: true, latency_ms: 15.0, packet_loss_pct: 0.0 },
+        { node_id: 'WB3', reachable: !isFailed, latency_ms: isFailed ? null : 16.0, packet_loss_pct: isFailed ? 100.0 : 0.0 },
+        { node_id: 'WB4', reachable: !isFailed, latency_ms: isFailed ? null : 28.0, packet_loss_pct: isFailed ? 100.0 : 0.0 },
+        { node_id: 'R2', reachable: !isFailed, latency_ms: isFailed ? null : 30.0, packet_loss_pct: isFailed ? 100.0 : 0.0 },
+        { node_id: 'AP3', reachable: !isFailed, latency_ms: isFailed ? null : 33.0, packet_loss_pct: isFailed ? 100.0 : 0.0 },
+        { node_id: 'AP4', reachable: !isFailed, latency_ms: isFailed ? null : 34.0, packet_loss_pct: isFailed ? 100.0 : 0.0 },
+        { node_id: 'WB5', reachable: true, latency_ms: 15.0, packet_loss_pct: 0.0 },
+        { node_id: 'WB6', reachable: true, latency_ms: 29.0, packet_loss_pct: 0.0 },
+        { node_id: 'AP5', reachable: true, latency_ms: 32.0, packet_loss_pct: 0.0 },
+        { node_id: 'AP6', reachable: true, latency_ms: 33.0, packet_loss_pct: 0.0 },
+      ];
+
+      const res = await api('/probes/path', {
+        method: 'POST',
+        body: JSON.stringify({
+          agent_id: 'agent-rampur-1',
+          vantage_node_id: 'GW1',
+          timestamp: new Date().toISOString(),
+          results,
+        }),
+      });
+
+      if (res?.incident_id) {
+        const inc = await api(`/incidents/${res.incident_id}`).catch(() => null);
+        if (inc) {
+          store.setActiveIncident(inc);
+          const aff = await api(`/incidents/${inc.id}/affected-subscribers`).catch(() => null);
+          if (aff?.subscribers) store.setAffectedSubscribers(aff.subscribers);
+        }
+      }
+
+      const topo = await api('/topology').catch(() => null);
+      if (topo) store.setTopology(topo);
+
+      store.addToast(`Path probe from GW1: ${res.first_failed_nodes?.length ? `Fault boundary isolated at ${res.first_failed_nodes.join(', ')}` : 'All hops verified OK'}`, 'success');
+      return res;
+    } catch (err) {
+      store.addToast(`Probe failed: ${err.message}`, 'error');
+      throw err;
+    } finally {
+      store.setLoading(false);
+    }
+  }, [store]);
+
   return {
     fetchAll,
     runScenario,
@@ -183,5 +249,7 @@ export function useApi() {
     fetchBusinessImpact,
     fetchNotificationStatus,
     notifyIncident,
+    fetchAgentStatus,
+    runPathProbe,
   };
 }

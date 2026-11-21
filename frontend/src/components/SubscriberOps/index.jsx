@@ -63,9 +63,12 @@ export default function SubscriberOps() {
 
   const affectedIds = useMemo(() => new Set(affectedSubscribers.map(s => s.id)), [affectedSubscribers]);
 
+  const essentialCount = useMemo(() => allSubscribers.filter(s => s.is_essential).length, [allSubscribers]);
+
   const filteredSubs = useMemo(() => {
     if (filter === 'affected') return allSubscribers.filter(s => affectedIds.has(s.id));
     if (filter === 'due')      return allSubscribers.filter(s => s.payment_status === 'due' || s.payment_status === 'overdue');
+    if (filter === 'essential') return allSubscribers.filter(s => s.is_essential);
     return allSubscribers;
   }, [allSubscribers, affectedIds, filter]);
 
@@ -106,9 +109,10 @@ export default function SubscriberOps() {
         <span className="text-slate-500 text-xs hidden sm:inline">· {allSubscribers.length} subscribers across 3 villages</span>
         <div className="flex items-center gap-0.5 ml-auto bg-slate-900 rounded-lg p-0.5 border border-slate-700">
           {[
-            { id: 'all',      label: `All (${allSubscribers.length})` },
-            { id: 'affected', label: `Affected (${affectedSubscribers.length})` },
-            { id: 'due',      label: `Due (${dueCount})` },
+            { id: 'all',       label: `All (${allSubscribers.length})` },
+            { id: 'affected',  label: `Affected (${affectedSubscribers.length})` },
+            { id: 'due',       label: `Due (${dueCount})` },
+            { id: 'essential', label: `Essential (${essentialCount})` },
           ].map(tab => (
             <button
               key={tab.id}
@@ -150,7 +154,14 @@ export default function SubscriberOps() {
                         <div className="flex items-center gap-2">
                           {isAffected && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse shrink-0"/>}
                           <div>
-                            <div className="text-slate-200 font-medium whitespace-nowrap">{sub.display_name || sub.id}</div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-slate-200 font-medium whitespace-nowrap">{sub.display_name || sub.id}</span>
+                              {sub.is_essential && (
+                                <span className="px-1.5 py-0.2 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-700/80 font-semibold shrink-0">
+                                  🏥 Essential
+                                </span>
+                              )}
+                            </div>
                             <div className="text-slate-500 text-xs">{sub.id}</div>
                           </div>
                         </div>

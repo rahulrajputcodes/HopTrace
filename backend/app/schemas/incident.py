@@ -38,6 +38,12 @@ class IncidentResponse(BaseModel):
         ...,
         description="Creation timestamp in ISO 8601 UTC format (e.g. 2026-10-29T10:00:00Z).",
     )
+    cause: Optional[str] = Field(None, description="Deterministic root cause classification")
+    cause_confidence: Optional[float] = Field(None, description="Root cause confidence score [0.0, 0.85]")
+    cause_reasoning: list[str] = Field(default_factory=list, description="Reasoning bullets for root cause")
+    hop_trace: list[Any] = Field(default_factory=list, description="Proactive path probe hop trace")
+    resolved_at: Optional[str] = Field(None, description="Resolution timestamp in ISO 8601 UTC format")
+    duration_seconds: Optional[int] = Field(None, description="Outage duration in seconds")
 
 
 class AffectedSubscriberItem(BaseModel):

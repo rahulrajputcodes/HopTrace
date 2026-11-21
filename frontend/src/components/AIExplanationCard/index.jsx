@@ -37,7 +37,6 @@ export default function AIExplanationCard() {
   const activeIncident = useStore(s => s.activeIncident);
   const sarvamLanguage = useStore(s => s.sarvamLanguage);
   const setSarvamLanguage = useStore(s => s.setSarvamLanguage);
-  const sarvamApiKey = useStore(s => s.sarvamApiKey);
   const sarvamSpeaker = useStore(s => s.sarvamSpeaker);
   const isPlayingAudio = useStore(s => s.isPlayingAudio);
   const setIsPlayingAudio = useStore(s => s.setIsPlayingAudio);
@@ -53,7 +52,7 @@ export default function AIExplanationCard() {
   const handleLanguageChange = (code) => {
     setSarvamLanguage(code);
     if (activeIncident?.id) {
-      explainIncident(activeIncident.id, code, sarvamApiKey);
+      explainIncident(activeIncident.id, code);
     }
   };
 
@@ -87,7 +86,7 @@ export default function AIExplanationCard() {
     const speaker = LANG_OPTIONS.find(l => l.code === sarvamLanguage)?.speaker || sarvamSpeaker;
 
     try {
-      const b64 = await synthesizeAudio(text.slice(0, 500), langCode, speaker, sarvamApiKey);
+      const b64 = await synthesizeAudio(text.slice(0, 500), langCode, speaker);
       if (b64) {
         const snd = new Audio(`data:audio/mp3;base64,${b64}`);
         audioRef.current = snd;
@@ -98,8 +97,8 @@ export default function AIExplanationCard() {
         return;
       }
     } catch (err) {
-    console.warn('Sarvam audio playback fallback:', err);
-  }
+      console.warn('Sarvam audio playback fallback:', err);
+    }
     fallback(text);
   };
 

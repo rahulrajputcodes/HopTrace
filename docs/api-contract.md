@@ -279,3 +279,165 @@ measurements or subscriber counts.
 
 All members must communicate contract changes before
 implementing incompatible interfaces.
+
+
+---
+
+## Part 1 Contract Additions (Live Truth Pipeline & Monitoring Blind-Spot)
+
+### 11. Configuration & Freshness Semantics
+
+#### Environment Settings
+- `DATA_MODE`: `"demo"` (default) | `"live"`. In `live` mode, unmonitored links receive no simulated fill (`no_data`).
+- `LIVE_TTL_SECONDS`: integer, default `30`. Age threshold for `live` measurements.
+- `AGENT_SILENT_SECONDS`: integer, default `20`. Inactivity threshold before an agent is marked `silent`.
+
+#### Freshness States
+Let `age` = `now_utc` - `last_seen_utc` of measurement:
+- `age <= LIVE_TTL_SECONDS` -> `"live"`
+- `LIVE_TTL_SECONDS < age <= 3 * LIVE_TTL_SECONDS` -> `"stale"`
+- older, or never seen in `live` mode -> `"no_data"`
+- `DATA_MODE=demo` and link never had live data -> `"simulated"`
+
+### 12. WebSocket Telemetry Stream Extension
+
+Endpoint: `WS /ws/telemetry`
+
+Message type: `telemetry_batch`
+
+Extended batch fields:
+- `data_mode`: `"demo"` | `"live"`
+- `agents`: array of agent status objects (see `GET /api/v1/agent/status`)
+- `measurements[].freshness`: `"live"` | `"stale"` | `"no_data"` | `"simulated"`
+- `measurements[].last_seen_utc`: ISO 8601 UTC string or `null`
+
+```json
+{
+  "type": "telemetry_batch",
+  "tick": 42,
+  "timestamp_utc": "2026-11-15T10:42:11Z",
+  "data_mode": "live",
+  "measurements": [
+    {
+      "link_id": "L3",
+      "latency_ms": 25.0,
+      "packet_loss_pct": 0.5,
+      "throughput_mbps": 35.0,
+      "connectivity_ok": true,
+      "freshness": "live",
+      "last_seen_utc": "2026-11-15T10:42:11Z"
+    }
+  ],
+  "agents": [
+    {
+      "agent_id": "agent-rampur-1",
+      "site_id": "rampur",
+      "last_seen_utc": "2026-11-15T10:42:11Z",
+      "status": "online",
+      "silent_for_seconds": 0,
+      "buffered_count": 0
+    }
+  ]
+}
+```
+
+### 13. Path Probes
+
+POST /api/v1/probes/path
+
+Header (optional): `X-API-Key` (matches `INGEST_API_KEY`)
+
+Request:
+```json
+{
+  "agent_id": "agent-rampur-1",
+  "vantage_node_id": "GW1",
+  "timestamp": "2026-11-15T10:42:11Z",
+  "results": [
+    {
+      "node_id": "R1",
+      "reachable": true,
+      "latency_ms": 12.4,
+      "packet_loss_pct": 0.0
+    },
+    {
+      "node_id": "WB3",
+      "reachable": false,
+      "latency_ms": null,
+      "packet_loss_pct": 100.0
+    }
+  ]
+}
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "derived_links": 14,
+  "first_failed_nodes": ["WB3"],
+  "incident_id": "inc-001"
+}
+```
+Validation: unknown `node_id` returns HTTP 422.
+
+### 14. Agent Heartbeat & Status
+
+POST /api/v1/agent/heartbeat
+
+Header (optional): `X-API-Key` (matches `INGEST_API_KEY`)
+
+Request:
+```json
+{
+  "agent_id": "agent-rampur-1",
+  "site_id": "rampur",
+  "timestamp": "2026-11-15T10:42:11Z",
+  "buffered_count": 0,
+  "version": "2.1"
+}
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "agent_id": "agent-rampur-1"
+}
+```
+
+---
+
+GET /api/v1/agent/status
+
+Response:
+```json
+{
+  "agents": [
+    {
+      "agent_id": "agent-rampur-1",
+      "site_id": "rampur",
+      "last_seen_utc": "2026-11-15T10:42:11Z",
+      "status": "online",
+      "silent_for_seconds": 0,
+      "buffered_count": 0
+    }
+  ]
+}
+```
+Note: Agent status `silent` represents a monitoring blind-spot warning, not a network fault incident.
+
+### 15. Incident Details Schema Additions
+
+Fields added to `IncidentDetails`:
+- `cause`: optional string (`"power_outage"` | `"fiber_cut"` | `"rf_degradation"` | `"upstream_failure"` | `"unknown"`)
+- `cause_confidence`: optional float (`0.0` to `0.85`)
+- `cause_reasoning`: list of deterministic human-readable explanation strings
+- `hop_trace`: list of `HopResult` objects:
+  - `node_id`: string
+  - `link_id`: optional string (inbound link to node; null for vantage node)
+  - `depth`: integer hops from vantage node
+  - `reachable`: boolean
+  - `latency_ms`: optional float cumulative RTT
+  - `packet_loss_pct`: optional float
+  - `status`: string (`"ok"` | `"degraded"` | `"failed"` | `"behind_failure"` | `"no_data"`)

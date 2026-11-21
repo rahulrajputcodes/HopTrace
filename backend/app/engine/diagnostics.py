@@ -61,7 +61,11 @@ class DiagnosticEngine:
         ambiguity_margin: float = 0.08,
         upstream_full_loss_threshold: float = 98.0,
     ) -> None:
-        self.baselines = baselines or BASELINE_TELEMETRY
+        if baselines is not None:
+            self.baselines = baselines
+        else:
+            from app.engine.baselines import get_baseline_provider
+            self.baselines = get_baseline_provider()
         self.detection_threshold = detection_threshold
         self.ambiguity_margin = ambiguity_margin
         self.upstream_full_loss_threshold = upstream_full_loss_threshold
@@ -169,42 +173,58 @@ class DiagnosticEngine:
                 ))
 
         # 4. Throughput Degradation
-        if measurement.throughput_mbps is None:
-            report.missing_metrics_count += 1
-            report.evidence.append(EvidenceItem(
-                metric="throughput_mbps",
-                observed_value=None,
-                baseline_value=base_tp,
-                threshold=f">= {base_tp * 0.85:.1f} Mbps",
-                status="missing",
-                severity="low",
-                description=f"Throughput telemetry missing for link '{link_id}'.",
-            ))
-        else:
-            drop_pct = max(0.0, (base_tp - measurement.throughput_mbps) / base_tp) if base_tp > 0 else 0.0
-            if drop_pct > 0.15:
-                report.s_tp = min(1.0, (drop_pct - 0.15) / 0.70)
-                sev = "high" if drop_pct >= 0.60 else ("medium" if drop_pct >= 0.30 else "low")
+        provides = getattr(measurement, "provides", None)
+        data_src = getattr(measurement, "data_source", None)
+        provides_throughput = True
+        if provides is not None:
+            provides_throughput = "throughput_mbps" in provides
+        elif data_src in ("path_probe", "probe", "ping"):
+            provides_throughput = False
+
+        if provides_throughput:
+            if measurement.throughput_mbps is None:
+                report.missing_metrics_count += 1
                 report.evidence.append(EvidenceItem(
                     metric="throughput_mbps",
-                    observed_value=measurement.throughput_mbps,
+                    observed_value=None,
                     baseline_value=base_tp,
-                    threshold=round(base_tp * 0.85, 1),
-                    status="anomaly",
-                    severity=sev,
-                    description=(
-                        f"Throughput degraded to {measurement.throughput_mbps:.1f} Mbps "
-                        f"({drop_pct * 100:.1f}% below baseline {base_tp:.1f} Mbps)."
-                    ),
+                    threshold=f">= {base_tp * 0.85:.1f} Mbps",
+                    status="missing",
+                    severity="low",
+                    description=f"Throughput telemetry missing for link '{link_id}'.",
                 ))
+            else:
+                drop_pct = max(0.0, (base_tp - measurement.throughput_mbps) / base_tp) if base_tp > 0 else 0.0
+                if drop_pct > 0.15:
+                    report.s_tp = min(1.0, (drop_pct - 0.15) / 0.70)
+                    sev = "high" if drop_pct >= 0.60 else ("medium" if drop_pct >= 0.30 else "low")
+                    report.evidence.append(EvidenceItem(
+                        metric="throughput_mbps",
+                        observed_value=measurement.throughput_mbps,
+                        baseline_value=base_tp,
+                        threshold=round(base_tp * 0.85, 1),
+                        status="anomaly",
+                        severity=sev,
+                        description=(
+                            f"Throughput degraded to {measurement.throughput_mbps:.1f} Mbps "
+                            f"({drop_pct * 100:.1f}% below baseline {base_tp:.1f} Mbps)."
+                        ),
+                    ))
 
         # Composite score: w_conn=0.40, w_loss=0.30, w_lat=0.20, w_tp=0.10
-        raw_score = (
-            (0.40 * report.s_conn)
-            + (0.30 * report.s_loss)
-            + (0.20 * report.s_lat)
-            + (0.10 * report.s_tp)
-        )
+        if not provides_throughput:
+            raw_score = (
+                (0.40 * report.s_conn)
+                + (0.30 * report.s_loss)
+                + (0.20 * report.s_lat)
+            ) / 0.90
+        else:
+            raw_score = (
+                (0.40 * report.s_conn)
+                + (0.30 * report.s_loss)
+                + (0.20 * report.s_lat)
+                + (0.10 * report.s_tp)
+            )
         report.score = round(raw_score, 4)
         return report
 
@@ -235,8 +255,7 @@ class DiagnosticEngine:
         all_interior_saturated = all(
             m.packet_loss_pct is not None
             and m.packet_loss_pct >= self.upstream_full_loss_threshold
-            and m.throughput_mbps is not None
-            and m.throughput_mbps == 0.0
+            and (m.throughput_mbps is None or m.throughput_mbps == 0.0)
             for m in interior_measured
         )
         if not all_interior_saturated:
@@ -451,6 +470,33 @@ class DiagnosticEngine:
                     return link_id
         return None
 
+    def _apply_cause_hook(
+        self,
+        incident: IncidentDetails,
+        measurements: List[Measurement],
+        topology: Optional[NetworkTopology],
+        suspected_component_id: Optional[str],
+    ) -> IncidentDetails:
+        # HOOK: cause (Track B provides classify_cause in engine/cause.py)
+        try:
+            from app.engine.cause import classify_cause
+            from app.engine.time_series import get_time_series_store
+            ts_store = get_time_series_store()
+            history = ts_store.get_link_history(suspected_component_id) if suspected_component_id else None
+            cause_res = classify_cause(
+                measurements=measurements,
+                topology=topology,
+                suspected_component_id=suspected_component_id,
+                link_history=history,
+            )
+            if cause_res:
+                incident.cause = cause_res.cause
+                incident.cause_confidence = cause_res.confidence
+                incident.cause_reasoning = cause_res.reasoning
+        except Exception:
+            pass
+        return incident
+
     def diagnose(
         self,
         measurements: List[Measurement],
@@ -478,7 +524,9 @@ class DiagnosticEngine:
             upstream_incident.created_at = created_at
             # Tag with fault_class via summary prefix (backward compatible)
             upstream_incident.summary = "[upstream] " + upstream_incident.summary
-            return upstream_incident
+            return self._apply_cause_hook(
+                upstream_incident, measurements, topology, upstream_incident.suspected_component_id
+            )
 
         # ── 2. Per-link anomaly scoring ───────────────────────────────────────
         reports: List[LinkAnomalyReport] = []
@@ -498,10 +546,41 @@ class DiagnosticEngine:
         top_report = reports[0] if reports else None
         top_score = top_report.score if top_report else 0.0
 
-        # ── 3. Healthy baseline ───────────────────────────────────────────────
+        # Update dynamic baseline provider with healthy samples
+        if hasattr(self.baselines, "update"):
+            for rep in reports:
+                if rep.score < self.detection_threshold and not rep.is_unmonitored:
+                    m = meas_map.get(rep.link_id)
+                    if m is not None:
+                        self.baselines.update(
+                            link_id=rep.link_id,
+                            measurement=m,
+                            anomaly_score=rep.score,
+                            detection_threshold=self.detection_threshold,
+                        )
+
+        # ── 3. Healthy baseline / all unmonitored ─────────────────────────────
         if top_score < self.detection_threshold:
+            all_unmonitored = bool(reports) and all(r.is_unmonitored for r in reports)
+            if all_unmonitored:
+                inc = IncidentDetails(
+                    id=incident_id,
+                    run_id=run_identifier,
+                    status="closed",
+                    suspected_component_id=None,
+                    suspected_component_type=None,
+                    summary="No telemetry data: all network links are currently unmonitored.",
+                    confidence_score=None,
+                    diagnostic_score=0.0,
+                    evidence=[],
+                    uncertainty_note="All network links are currently unmonitored (no telemetry received).",
+                    data_source="simulated",
+                    created_at=created_at,
+                )
+                return self._apply_cause_hook(inc, measurements, topology, None)
+
             uncertainty_text = ("Incomplete telemetry: " + "; ".join(missing_notes)) if missing_notes else None
-            return IncidentDetails(
+            inc = IncidentDetails(
                 id=incident_id,
                 run_id=run_identifier,
                 status="closed" if not missing_notes else "open",
@@ -519,6 +598,7 @@ class DiagnosticEngine:
                 data_source="simulated",
                 created_at=created_at,
             )
+            return self._apply_cause_hook(inc, measurements, topology, None)
 
         # ── 4. Flapping detection ─────────────────────────────────────────────
         flapping_link = self._detect_flapping(meas_map, known_links)
@@ -529,7 +609,7 @@ class DiagnosticEngine:
                 "This indicates physical layer instability: dirty connector, weathered cable, "
                 "or RF interference. Highest-priority physical inspection required."
             )
-            return IncidentDetails(
+            inc = IncidentDetails(
                 id=incident_id, run_id=run_identifier, status="open",
                 suspected_component_id=flapping_link,
                 suspected_component_type="link",
@@ -541,6 +621,7 @@ class DiagnosticEngine:
                 data_source="simulated",
                 created_at=created_at,
             )
+            return self._apply_cause_hook(inc, measurements, topology, flapping_link)
 
         # ── 5. Cascade detection ──────────────────────────────────────────────
         is_cascade = self._detect_cascade_fault(
@@ -563,7 +644,7 @@ class DiagnosticEngine:
                 "fault (e.g. R1 core router issue), environmental interference (weather/RF), "
                 "or congestion at the backhaul. Individual link failure is less likely."
             )
-            return IncidentDetails(
+            inc = IncidentDetails(
                 id=incident_id, run_id=run_identifier, status="open",
                 suspected_component_id=top_report.link_id if top_report else None,
                 suspected_component_type="link",
@@ -574,6 +655,9 @@ class DiagnosticEngine:
                 uncertainty_note=uncertainty_note,
                 data_source="simulated",
                 created_at=created_at,
+            )
+            return self._apply_cause_hook(
+                inc, measurements, topology, top_report.link_id if top_report else None
             )
 
         # ── 6. Standard isolated fault ────────────────────────────────────────
@@ -608,7 +692,7 @@ class DiagnosticEngine:
             if missing_notes:
                 uncertainty_note = "Telemetry missing on other segments: " + "; ".join(missing_notes)
 
-        return IncidentDetails(
+        inc = IncidentDetails(
             id=incident_id,
             run_id=run_identifier,
             status="open",
@@ -621,6 +705,9 @@ class DiagnosticEngine:
             uncertainty_note=uncertainty_note,
             data_source="simulated",
             created_at=created_at,
+        )
+        return self._apply_cause_hook(
+            inc, measurements, topology, top_report.link_id if top_report else None
         )
 
 

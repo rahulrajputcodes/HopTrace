@@ -1,0 +1,26 @@
+{
+  "api_base": "http://127.0.0.1:8000",
+  "agent_id": "agent-testbed-1",
+  "site_id": "bhatpur",
+  "vantage_node_id": "GW1",
+  "interval_seconds": 3,
+  "ping_count": 2,
+  "timeout_seconds": 1,
+  "buffer_path": "testbed/buffer.jsonl",
+  "nodes": [
+    { "node_id": "R1", "host": "192.0.2.1" },
+    { "node_id": "WB1", "host": "192.0.2.2" },
+    { "node_id": "WB2", "host": "192.0.2.3" },
+    { "node_id": "AP1", "host": "192.0.2.4" },
+    { "node_id": "AP2", "host": "192.0.2.5" },
+    { "node_id": "WB3", "host": "192.0.2.6" },
+    { "node_id": "WB4", "host": "192.0.2.7" },
+    { "node_id": "R2", "host": "192.0.2.8" },
+    { "node_id": "AP3", "host": "192.0.2.9" },
+    { "node_id": "AP4", "host": "192.0.2.10" },
+    { "node_id": "WB5", "host": "192.0.2.11" },
+    { "node_id": "WB6", "host": "192.0.2.12" },
+    { "node_id": "AP5", "host": "192.0.2.13" },
+    { "node_id": "AP6", "host": "192.0.2.14" }
+  ]
+}

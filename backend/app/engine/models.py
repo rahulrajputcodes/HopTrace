@@ -116,6 +116,22 @@ class EvidenceItem(BaseModel):
     description: str
 
 
+class HopResult(BaseModel):
+    node_id: str
+    link_id: Optional[str] = None        # inbound link of this node (None for the vantage node)
+    depth: int                           # hops from vantage node
+    reachable: bool
+    latency_ms: Optional[float] = None   # cumulative RTT to this node
+    packet_loss_pct: Optional[float] = None
+    status: str                          # "ok" | "degraded" | "failed" | "behind_failure" | "no_data"
+
+
+class CauseResult(BaseModel):
+    cause: str                           # "power_outage" | "fiber_cut" | "rf_degradation" | "upstream_failure" | "unknown"
+    confidence: float                    # 0..1, never above 0.85
+    reasoning: List[str]                 # short, human-readable, deterministic
+
+
 class IncidentDetails(BaseModel):
     id: str
     run_id: str
@@ -131,6 +147,12 @@ class IncidentDetails(BaseModel):
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
+    cause: Optional[str] = None
+    cause_confidence: Optional[float] = None
+    cause_reasoning: List[str] = Field(default_factory=list)
+    hop_trace: List[HopResult] = Field(default_factory=list)   # empty for lab scenarios
+    resolved_at: Optional[str] = None
+    duration_seconds: Optional[int] = None
 
 
 class ScenarioRunResponse(BaseModel):

@@ -1,12 +1,76 @@
 import { useState, useEffect } from 'react';
 import useStore from '../../store/appStore';
 import { useApi } from '../../hooks/useApi';
+import HopTraceStrip from './HopTraceStrip';
 
 const SEV_COLORS = {
   critical: 'bg-red-900 border-red-600 text-red-300',
   high:     'bg-orange-900 border-orange-600 text-orange-300',
   medium:   'bg-amber-900 border-amber-600 text-amber-300',
   low:      'bg-blue-900 border-blue-600 text-blue-300',
+};
+
+
+
+const DISPATCH_SOP = {
+  fiber_cut: {
+    target: 'Optical Splicer Crew (Block HQ)',
+    etr: '~3.5 Hours',
+    tools: 'OTDR & Fusion Splicer',
+    procedure: 'Shoot OTDR from GW1 to locate physical break distance along Right-of-Way; dispatch linesman for optical re-splice.',
+  },
+  power_outage: {
+    target: 'Village Linesman / Site Custodian',
+    etr: '~45 Minutes',
+    tools: 'Multimeter & Battery/Generator Jump',
+    procedure: 'Verify grid mains at Gram Panchayat tower; test 24V/48V UPS battery bank and reset PoE injectors.',
+  },
+  rf_degradation: {
+    target: 'Tower Rigging Crew',
+    etr: '~1.5 Hours',
+    tools: 'RSSI Spectrum Analyzer & Alignment Kit',
+    procedure: 'Inspect dish bracket azimuth/elevation; clear line-of-sight foliage in 60% Fresnel clearance zone.',
+  },
+  upstream_failure: {
+    target: 'Tier-1 ISP NOC Escalation (Remote)',
+    etr: 'Upstream Transit Dependent',
+    tools: 'NOC BGP Ticket Terminal',
+    procedure: 'Do not dispatch local field technicians; escalate urgent P1 incident to upstream transit provider NOC.',
+  },
+  unknown: {
+    target: 'Vantage Point Probe Triage',
+    etr: 'Under Investigation',
+    tools: 'Remote Probe & Syslog Terminal',
+    procedure: 'Run vantage probe trace from GW1; inspect radio interface error logs and power supply continuity.',
+  },
+};
+
+const CAUSE_META = {
+  fiber_cut: {
+    label: 'Fibre cut',
+    badgeClass: 'bg-rose-950/80 border-rose-600/80 text-rose-300',
+    icon: '✂️',
+  },
+  power_outage: {
+    label: 'Likely power outage',
+    badgeClass: 'bg-amber-950/80 border-amber-600/80 text-amber-300',
+    icon: '⚡',
+  },
+  rf_degradation: {
+    label: 'Radio link degradation',
+    badgeClass: 'bg-yellow-950/80 border-yellow-600/80 text-yellow-300',
+    icon: '📡',
+  },
+  upstream_failure: {
+    label: 'Upstream failure',
+    badgeClass: 'bg-purple-950/80 border-purple-600/80 text-purple-300',
+    icon: '🌐',
+  },
+  unknown: {
+    label: 'Cause undetermined',
+    badgeClass: 'bg-slate-800 border-slate-700 text-slate-400',
+    icon: '❓',
+  },
 };
 
 const FAULT_CLASS_META = {
@@ -76,8 +140,8 @@ export default function IncidentPanel() {
   const aiLoading = useStore(s => s.aiLoading);
   const aiReport = useStore(s => s.aiReport);
   const sarvamLanguage = useStore(s => s.sarvamLanguage);
-  const sarvamApiKey = useStore(s => s.sarvamApiKey);
   const { explainIncident } = useApi();
+  const [explainError, setExplainError] = useState(null);
 
   const elapsed = useElapsedTime(activeIncident?.created_at);
 
@@ -99,8 +163,18 @@ export default function IncidentPanel() {
     byVillage[v].push(s);
   });
 
-  const handleExplain = () => {
-    explainIncident(activeIncident.id, sarvamLanguage, sarvamApiKey);
+  const handleExplain = async () => {
+    setExplainError(null);
+    try {
+      await explainIncident(activeIncident.id, sarvamLanguage);
+    } catch (err) {
+      const msg = err?.message || '';
+      if (msg.includes('503') || msg.toLowerCase().includes('not configured')) {
+        setExplainError('AI explanation unavailable — not configured on server');
+      } else {
+        setExplainError(msg || 'AI explanation unavailable');
+      }
+    }
   };
 
   return (
@@ -125,6 +199,62 @@ export default function IncidentPanel() {
           <div className="text-slate-400 text-xs mt-0.5 line-clamp-2">
             {(activeIncident.summary || '').replace(/^\[.*?\]\s*/, '') || 'Network anomaly detected'}
           </div>
+
+          {/* Deterministic Root Cause Chip & Reasoning */}
+          {activeIncident.cause && (
+            <div className="mt-2 pt-2 border-t border-slate-700/60">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  data-testid="cause-chip"
+                  className={`px-2 py-0.5 rounded-full border text-xs font-semibold flex items-center gap-1.5 ${
+                    (CAUSE_META[activeIncident.cause] || CAUSE_META.unknown).badgeClass
+                  }`}
+                >
+                  <span>{(CAUSE_META[activeIncident.cause] || CAUSE_META.unknown).icon}</span>
+                  <span>{(CAUSE_META[activeIncident.cause] || CAUSE_META.unknown).label}</span>
+                </span>
+                {typeof activeIncident.cause_confidence === 'number' && (
+                  <span className="text-[11px] text-slate-300 font-mono">
+                    {Math.round(activeIncident.cause_confidence * 100)}% confidence
+                  </span>
+                )}
+              </div>
+              {Array.isArray(activeIncident.cause_reasoning) && activeIncident.cause_reasoning.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-300 pl-4 list-disc marker:text-slate-500">
+                  {activeIncident.cause_reasoning.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Actionable Field Dispatch SOP */}
+              {(() => {
+                const sop = DISPATCH_SOP[activeIncident.cause] || DISPATCH_SOP.unknown;
+                return (
+                  <div className="mt-2.5 p-2 bg-slate-900/90 border border-slate-700/80 rounded-lg space-y-1 text-xs">
+                    <div className="flex items-center justify-between text-slate-200 font-semibold border-b border-slate-800 pb-1">
+                      <span className="flex items-center gap-1.5 text-sky-400">
+                        <span>🛠️</span>
+                        <span>Field SOP & Dispatch</span>
+                      </span>
+                      <span className="text-[11px] font-mono text-amber-400">
+                        Est. Restore: {sop.etr}
+                      </span>
+                    </div>
+                    <div className="text-slate-300 text-xs">
+                      <strong className="text-slate-400 font-medium">Crew:</strong> {sop.target}
+                    </div>
+                    <div className="text-slate-300 text-xs">
+                      <strong className="text-slate-400 font-medium">Tools:</strong> {sop.tools}
+                    </div>
+                    <div className="text-slate-400 text-[11px] italic mt-0.5">
+                      {sop.procedure}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </div>
         <div className="shrink-0 text-right">
           <div className="text-white font-bold text-lg">{confidence}%</div>
@@ -134,6 +264,11 @@ export default function IncidentPanel() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 max-h-72">
+        {/* Hop Trace Strip (proactive vantage probe fault boundary) */}
+        {Array.isArray(activeIncident.hop_trace) && activeIncident.hop_trace.length > 0 && (
+          <HopTraceStrip hopTrace={activeIncident.hop_trace} />
+        )}
+
         {/* Evidence chain */}
         {evidence.length > 0 && (
           <div>
@@ -149,22 +284,45 @@ export default function IncidentPanel() {
         {/* Affected subscribers */}
         {affectedSubscribers.length > 0 && (
           <div>
-            <div className="text-xs text-slate-500 font-medium uppercase mb-1.5">
-              Affected Subscribers ({affectedSubscribers.length})
+            <div className="flex items-center justify-between text-xs text-slate-400 font-medium uppercase mb-1.5">
+              <span>Affected Subscribers ({affectedSubscribers.length})</span>
+              {affectedSubscribers.some(s => s.is_essential) && (
+                <span className="text-emerald-400 font-bold lowercase tracking-normal text-[11px]">
+                  ({affectedSubscribers.filter(s => s.is_essential).length} essential services)
+                </span>
+              )}
             </div>
             {Object.entries(byVillage).map(([village, subs]) => (
               <div key={village} className="mb-2">
-                <div className="text-xs text-slate-500 mb-1">{village}</div>
+                <div className="text-xs text-slate-400 mb-1 font-semibold">{village}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {subs.map(s => (
-                    <div key={s.id} className="px-2 py-1 bg-red-950/40 border border-red-800/50 rounded-lg text-xs text-red-300">
-                      {s.display_name || s.id}
-                      <span className="text-red-500 ml-1">({s.plan})</span>
+                    <div
+                      key={s.id}
+                      className={`px-2 py-1 rounded-lg text-xs flex items-center gap-1.5 border ${
+                        s.is_essential
+                          ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-200 font-medium'
+                          : 'bg-red-950/40 border-red-800/50 text-red-300'
+                      }`}
+                    >
+                      {s.is_essential && <span className="text-[11px]" title="Essential Public Service">🏥</span>}
+                      <span>{s.display_name || s.id}</span>
+                      <span className={s.is_essential ? 'text-emerald-400 font-mono text-[10px]' : 'text-red-500 font-mono text-[10px]'}>
+                        ({s.is_essential ? 'Essential' : s.plan})
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Friendly 503 error state */}
+        {explainError && (
+          <div className="p-3 bg-slate-900 border border-slate-700/80 rounded-lg text-xs text-slate-300 flex items-center gap-2">
+            <span className="text-amber-400">ℹ</span>
+            <span>{explainError}</span>
           </div>
         )}
 

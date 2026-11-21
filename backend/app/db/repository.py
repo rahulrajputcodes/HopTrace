@@ -143,6 +143,26 @@ def _row_to_incident(row: sqlite3.Row) -> dict[str, Any]:
             data["evidence"] = []
     else:
         data["evidence"] = []
+    extras_raw = data.get("extras_json")
+    if extras_raw:
+        try:
+            extras = json.loads(extras_raw)
+            data["cause"] = extras.get("cause")
+            data["cause_confidence"] = extras.get("cause_confidence")
+            data["cause_reasoning"] = extras.get("cause_reasoning", [])
+            data["hop_trace"] = extras.get("hop_trace", [])
+        except (json.JSONDecodeError, TypeError):
+            data["cause"] = None
+            data["cause_confidence"] = None
+            data["cause_reasoning"] = []
+            data["hop_trace"] = []
+    else:
+        data.setdefault("cause", None)
+        data.setdefault("cause_confidence", None)
+        data.setdefault("cause_reasoning", [])
+        data.setdefault("hop_trace", [])
+    data.setdefault("resolved_at", data.get("resolved_at"))
+    data.setdefault("duration_seconds", data.get("duration_seconds"))
     return data
 
 
@@ -151,7 +171,8 @@ def get_latest_incident(conn: sqlite3.Connection) -> dict[str, Any] | None:
     cursor = conn.execute(
         """
         SELECT id, run_id, status, suspected_component_id, suspected_component_type,
-               summary, confidence_score, evidence, uncertainty_note, data_source, created_at
+               summary, confidence_score, evidence, uncertainty_note, data_source, created_at, extras_json,
+               resolved_at, duration_seconds
         FROM incidents
         ORDER BY created_at DESC, id DESC
         LIMIT 1;
@@ -166,7 +187,8 @@ def get_latest_open_incident(conn: sqlite3.Connection) -> dict[str, Any] | None:
     cursor = conn.execute(
         """
         SELECT id, run_id, status, suspected_component_id, suspected_component_type,
-               summary, confidence_score, evidence, uncertainty_note, data_source, created_at
+               summary, confidence_score, evidence, uncertainty_note, data_source, created_at, extras_json,
+               resolved_at, duration_seconds
         FROM incidents
         WHERE status != 'closed'
         ORDER BY created_at DESC, id DESC
@@ -182,7 +204,8 @@ def get_incident(conn: sqlite3.Connection, incident_id: str) -> dict[str, Any] |
     cursor = conn.execute(
         """
         SELECT id, run_id, status, suspected_component_id, suspected_component_type,
-               summary, confidence_score, evidence, uncertainty_note, data_source, created_at
+               summary, confidence_score, evidence, uncertainty_note, data_source, created_at, extras_json,
+               resolved_at, duration_seconds
         FROM incidents
         WHERE id = ?;
         """,
@@ -201,14 +224,31 @@ def create_incident(conn: sqlite3.Connection, incident_data: dict[str, Any]) -> 
     evidence = incident_data.get("evidence", [])
     evidence_json = json.dumps(evidence) if not isinstance(evidence, str) else evidence
 
+    extras = incident_data.get("extras_json")
+    if extras is None:
+        hop_trace_val = incident_data.get("hop_trace", [])
+        hop_trace_serializable = [
+            h.model_dump() if hasattr(h, "model_dump") else (h.dict() if hasattr(h, "dict") else h)
+            for h in (hop_trace_val or [])
+        ]
+        extras = {
+            "cause": incident_data.get("cause"),
+            "cause_confidence": incident_data.get("cause_confidence"),
+            "cause_reasoning": incident_data.get("cause_reasoning", []),
+            "hop_trace": hop_trace_serializable,
+        }
+    extras_json = json.dumps(extras) if not isinstance(extras, str) else extras
+
     conn.execute(
         """
         INSERT INTO incidents (
             id, run_id, status, suspected_component_id, suspected_component_type,
-            summary, confidence_score, evidence, uncertainty_note, data_source, created_at
+            summary, confidence_score, evidence, uncertainty_note, data_source, created_at, extras_json,
+            resolved_at, duration_seconds
         ) VALUES (
             :id, :run_id, :status, :suspected_component_id, :suspected_component_type,
-            :summary, :confidence_score, :evidence, :uncertainty_note, :data_source, :created_at
+            :summary, :confidence_score, :evidence, :uncertainty_note, :data_source, :created_at, :extras_json,
+            :resolved_at, :duration_seconds
         );
         """,
         {
@@ -223,6 +263,9 @@ def create_incident(conn: sqlite3.Connection, incident_data: dict[str, Any]) -> 
             "uncertainty_note": incident_data.get("uncertainty_note"),
             "data_source": incident_data.get("data_source", "simulated"),
             "created_at": incident_data.get("created_at") or datetime.now(timezone.utc).isoformat(),
+            "extras_json": extras_json,
+            "resolved_at": incident_data.get("resolved_at"),
+            "duration_seconds": incident_data.get("duration_seconds"),
         },
     )
     conn.commit()
@@ -230,15 +273,127 @@ def create_incident(conn: sqlite3.Connection, incident_data: dict[str, Any]) -> 
 
 
 def close_open_incidents(conn: sqlite3.Connection) -> None:
-    """Mark all open incidents in SQLite as closed."""
-    conn.execute(
+    """Mark all open incidents in SQLite as closed, recording resolved_at and duration_seconds."""
+    now_utc = datetime.now(timezone.utc)
+    now_iso = now_utc.isoformat()
+    cursor = conn.execute("SELECT id, created_at FROM incidents WHERE status = 'open';")
+    open_rows = cursor.fetchall()
+    for row in open_rows:
+        inc_id = row[0]
+        created_str = row[1]
+        duration = None
+        if created_str:
+            try:
+                c_clean = str(created_str).replace("Z", "+00:00")
+                c_dt = datetime.fromisoformat(c_clean)
+                if c_dt.tzinfo is None:
+                    c_dt = c_dt.replace(tzinfo=timezone.utc)
+                duration = max(0, int((now_utc - c_dt).total_seconds()))
+            except Exception:
+                duration = None
+
+        conn.execute(
+            """
+            UPDATE incidents
+            SET status = 'closed',
+                resolved_at = ?,
+                duration_seconds = ?
+            WHERE id = ?;
+            """,
+            (now_iso, duration, inc_id),
+        )
+    conn.commit()
+
+
+VILLAGE_COMPONENT_MAP = {
+    "rampur": ["L1", "L2", "L3", "L4", "L5", "R1", "WB1", "WB2", "AP1", "AP2"],
+    "bhatpur": ["L6", "L7", "L8", "L9", "L10", "WB3", "WB4", "R2", "AP3", "AP4"],
+    "daulatpur": ["L11", "L12", "L13", "L14", "WB5", "WB6", "AP5", "AP6"],
+}
+
+VILLAGE_META_INFO = {
+    "rampur": {"name": "Rampur", "subscribers": 10},
+    "bhatpur": {"name": "Bhatpur", "subscribers": 6},
+    "daulatpur": {"name": "Daulatpur", "subscribers": 4},
+}
+
+
+def get_village_sla_stats(conn: sqlite3.Connection, window_hours: int = 24) -> dict[str, Any]:
+    """Computes SLA availability percentages and outage duration per village over the window."""
+    now_utc = datetime.now(timezone.utc)
+    total_window_sec = max(1, window_hours * 3600)
+
+    cursor = conn.execute(
         """
-        UPDATE incidents
-        SET status = 'closed'
-        WHERE status = 'open';
+        SELECT id, suspected_component_id, status, created_at, resolved_at, duration_seconds
+        FROM incidents;
         """
     )
-    conn.commit()
+    rows = cursor.fetchall()
+
+    village_downtime: dict[str, float] = {"rampur": 0.0, "bhatpur": 0.0, "daulatpur": 0.0}
+    village_incident_count: dict[str, int] = {"rampur": 0, "bhatpur": 0, "daulatpur": 0}
+    village_active_count: dict[str, int] = {"rampur": 0, "bhatpur": 0, "daulatpur": 0}
+
+    for row in rows:
+        comp_id = row[1]
+        status = row[2]
+        created_str = row[3]
+        duration = row[5]
+
+        # Calculate outage duration
+        if status == "open" and created_str:
+            try:
+                c_clean = str(created_str).replace("Z", "+00:00")
+                c_dt = datetime.fromisoformat(c_clean)
+                if c_dt.tzinfo is None:
+                    c_dt = c_dt.replace(tzinfo=timezone.utc)
+                dur_sec = max(0.0, (now_utc - c_dt).total_seconds())
+            except Exception:
+                dur_sec = 0.0
+        else:
+            dur_sec = float(duration or 0.0)
+
+        # Cap at total window
+        dur_sec = min(float(total_window_sec), dur_sec)
+
+        # Map to affected villages (L1 backhaul affects all 3 villages)
+        affected_villages = []
+        if comp_id == "L1" or comp_id == "GW1":
+            affected_villages = ["rampur", "bhatpur", "daulatpur"]
+        else:
+            for vid, components in VILLAGE_COMPONENT_MAP.items():
+                if comp_id in components:
+                    affected_villages.append(vid)
+
+        for vid in affected_villages:
+            village_downtime[vid] = min(float(total_window_sec), village_downtime[vid] + dur_sec)
+            village_incident_count[vid] += 1
+            if status == "open":
+                village_active_count[vid] += 1
+
+    villages_res = {}
+    for vid, meta in VILLAGE_META_INFO.items():
+        down_sec = village_downtime[vid]
+        uptime_pct = round(100.0 * (total_window_sec - down_sec) / total_window_sec, 2)
+        down_min = round(down_sec / 60.0, 1)
+        active = village_active_count[vid]
+        vstatus = "critical" if active > 0 else ("degraded" if uptime_pct < 99.0 else "healthy")
+        villages_res[vid] = {
+            "village_id": vid,
+            "village_name": meta["name"],
+            "uptime_pct": uptime_pct,
+            "downtime_minutes": down_min,
+            "total_incidents": village_incident_count[vid],
+            "active_incidents": active,
+            "status": vstatus,
+        }
+
+    return {
+        "window_hours": window_hours,
+        "timestamp_utc": now_utc.isoformat(),
+        "villages": villages_res,
+    }
 
 
 # ── Run and Measurement Queries ──────────────────────────────────────────────

@@ -425,3 +425,71 @@ New tests in `tests/engine/test_upstream_failure.py`:
 | C — Ground-truth separation | Diagnostic signature does not accept `target_node_id`; inference without supplying topology |
 | D — Subscriber impact | In-memory graph returns all 5 subscribers; full facade pipeline |
 | E — Ambiguous / edge cases | Partial gateway degradation not classified as upstream failure; upstream-down with healthy interior falls to standard scoring |
+
+
+---
+
+## 9. Live Data Semantics, Freshness, & Hop-by-Hop Fault Derivation
+
+### 9.1 Freshness States & Transitions
+
+HopTrace enforces an honest live-data contract (§2.1) to ensure operators distinguish live telemetry from stale or simulated figures:
+
+| Freshness State | Condition | Interpretation |
+|---|---|---|
+| `live` | `elapsed_sec <= LIVE_TTL_SECONDS` (30s) | Active edge agent telemetry received within TTL |
+| `stale` | `LIVE_TTL_SECONDS < elapsed_sec <= 2 * LIVE_TTL_SECONDS` | Agent telemetry delayed; warning state before cutoff |
+| `no_data` | `elapsed_sec > 2 * LIVE_TTL_SECONDS` (or never seen) | Telemetry expired; link marked unmonitored |
+| `simulated` | `DATA_MODE="demo"` or scenario generator | Synthetic simulation for demonstrations |
+
+```
+[Agent Sample] ──(t=0)──> [LIVE] ──(t > 30s)──> [STALE] ──(t > 60s)──> [NO_DATA]
+```
+
+### 9.2 Backfill Separation Rules
+
+When delayed or buffered telemetry batches arrive from edge agents (store-and-forward):
+1. **Timestamp Inspection:** If `DATA_MODE="live"` and `(now - sample_time) > LIVE_TTL_SECONDS`, the batch is classified as historical backfill.
+2. **Storage Route:** Backfilled samples are inserted into the persistent SQLite database and time-series store for historical SLA auditing.
+3. **Diagnostic Protection:** Backfilled samples **never** update `received_at` timestamps, never revive stale/no_data freshness status, and never trigger new open incident alerts.
+
+### 9.3 Hop-by-Hop Path Probe Derivation & Topological Subtraction
+
+Rather than requiring telemetry instrumentation on every cable segment, edge monitoring agents probe node addresses in parallel from a designated vantage point (default `GW1`).
+
+HopTrace derives directional link health via BFS tree traversal from the vantage point:
+
+| Reached Node | Inbound Link | Health Inference Rule |
+|---|---|---|
+| Reachable ($P \to X$) | Link $P \to X$ | Link is UP; latency = $\Delta(\text{lat}_X - \text{lat}_P)$, loss = $\max(0, \text{loss}_X - \text{loss}_P)$ |
+| Unreachable ($X$) | Link $P \to X$ | First failed hop! Blamed for outage ($100\%$ loss, connectivity down) |
+| Descendants of $X$ | Subtree ($X \to \dots$) | Tagged `behind_failure`; suppressed from false alarm generation |
+
+#### 14-Link Topology Inbound Mapping
+
+| Node | Inbound Link | Source Node | Village Segment |
+|---|---|---|---|
+| `R1` | `L1` | `GW1` | PoP Core Backhaul |
+| `WB1` | `L2` | `R1` | Rampur Wireless Backhaul |
+| `WB2` | `L3` | `WB1` | Rampur PtP Link |
+| `AP1` | `L4` | `WB2` | Rampur Access Point 1 |
+| `AP2` | `L5` | `R1` | Rampur Access Point 2 |
+| `WB3` | `L6` | `R1` | Bhatpur Wireless Backhaul |
+| `WB4` | `L7` | `WB3` | Bhatpur PtP Link |
+| `R2` | `L8` | `WB4` | Bhatpur Sub-Router |
+| `AP3` | `L9` | `R2` | Bhatpur Access Point 3 |
+| `AP4` | `L10` | `R2` | Bhatpur Access Point 4 |
+| `WB5` | `L11` | `R1` | Daulatpur Wireless Backhaul |
+| `WB6` | `L12` | `WB5` | Daulatpur PtP Link |
+| `AP5` | `L13` | `WB6` | Daulatpur Access Point 5 |
+| `AP6` | `L14` | `WB6` | Daulatpur Access Point 6 |
+
+### 9.4 Adaptive EWMA Dynamic Baselines
+
+To adapt to seasonal, diurnal, and atmospheric variations (common in rural wireless deployments) without triggering false positives or suffering anomaly poisoning:
+
+1. **EWMA Formulation:**
+   $$\text{Baseline}_{\text{new}} = (1 - \alpha) \cdot \text{Baseline}_{\text{old}} + \alpha \cdot \text{Observed} \quad (\alpha = 0.30)$$
+2. **Warm-up Gate:** Static engineering defaults are used until $\ge 60$ healthy samples are observed for a link.
+3. **Health Validation:** Updates are strictly gated to healthy samples (`connectivity_ok = True`, `packet_loss < 5.0%`, `anomaly_score < 0.10`).
+4. **Drift Clamp:** Learned values are clamped within $\pm 50\%$ of static documented defaults to prevent drift extremes.

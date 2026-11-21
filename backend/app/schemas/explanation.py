@@ -5,19 +5,16 @@ Follows docs/api-contract.md Section 10.
 """
 from __future__ import annotations
 
-from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class IncidentExplanationRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     language: str = Field(
         ...,
         description="Target language code for the explanation (e.g. 'hi' for Hindi, 'en' for English)",
         examples=["hi"],
-    )
-    api_key: Optional[str] = Field(
-        None,
-        description="Optional Sarvam API key override passed directly from runtime UI",
     )
 
     @field_validator("language")
@@ -52,6 +49,8 @@ class IncidentExplanationResponse(BaseModel):
 
 
 class AudioSpeechRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
     text: str = Field(
         ...,
         description="Text content to synthesize into speech",
@@ -63,10 +62,6 @@ class AudioSpeechRequest(BaseModel):
     speaker: str = Field(
         "meera",
         description="Sarvam voice speaker persona (e.g. 'meera', 'shubh')",
-    )
-    api_key: Optional[str] = Field(
-        None,
-        description="Optional Sarvam API key override",
     )
 
 

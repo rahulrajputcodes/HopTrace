@@ -1,0 +1,117 @@
+version: "3.8"
+
+networks:
+  testbed-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 192.0.2.0/24
+
+x-node-template: &node-defaults
+  image: alpine:latest
+  command: >
+    sh -c "apk add --no-cache iproute2 iputils >/dev/null 2>&1 || true;
+           trap 'exit 0' SIGTERM;
+           while true; do sleep 3600; done"
+  cap_add:
+    - NET_ADMIN
+  restart: unless-stopped
+
+services:
+  node_r1:
+    <<: *node-defaults
+    container_name: hoptrace-r1
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.1
+
+  node_wb1:
+    <<: *node-defaults
+    container_name: hoptrace-wb1
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.2
+
+  node_wb2:
+    <<: *node-defaults
+    container_name: hoptrace-wb2
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.3
+
+  node_ap1:
+    <<: *node-defaults
+    container_name: hoptrace-ap1
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.4
+
+  node_ap2:
+    <<: *node-defaults
+    container_name: hoptrace-ap2
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.5
+
+  node_wb3:
+    <<: *node-defaults
+    container_name: hoptrace-wb3
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.6
+
+  node_wb4:
+    <<: *node-defaults
+    container_name: hoptrace-wb4
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.7
+
+  node_r2:
+    <<: *node-defaults
+    container_name: hoptrace-r2
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.8
+
+  node_ap3:
+    <<: *node-defaults
+    container_name: hoptrace-ap3
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.9
+
+  node_ap4:
+    <<: *node-defaults
+    container_name: hoptrace-ap4
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.10
+
+  node_wb5:
+    <<: *node-defaults
+    container_name: hoptrace-wb5
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.11
+
+  node_wb6:
+    <<: *node-defaults
+    container_name: hoptrace-wb6
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.12
+
+  node_ap5:
+    <<: *node-defaults
+    container_name: hoptrace-ap5
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.13
+
+  node_ap6:
+    <<: *node-defaults
+    container_name: hoptrace-ap6
+    networks:
+      testbed-net:
+        ipv4_address: 192.0.2.14

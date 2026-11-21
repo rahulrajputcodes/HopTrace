@@ -19,7 +19,8 @@ Adheres strictly to docs/api-contract.md.
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 from .diagnostics import DiagnosticEngine
 from .graph_store import InMemoryGraphStore, Neo4jGraphStore
 from .models import (
@@ -51,6 +52,7 @@ class HopTraceEngine:
         self._incidents: Dict[str, IncidentDetails] = {}
         self._incident_order: List[str] = []
         self._live_measurements: Dict[str, Any] = {}
+        self._live_metadata: Dict[str, Dict[str, Any]] = {}
 
     def is_neo4j_available(self) -> bool:
         """Checks if live Neo4j database is accessible."""
@@ -152,22 +154,91 @@ class HopTraceEngine:
             incident_id=incident_id,
         )
 
-    def ingest_live_measurements(self, measurements: List[Any]) -> ScenarioRunResponse:
+    def ingest_live_measurements(
+        self,
+        measurements: List[Any],
+        hop_trace: Optional[List[Any]] = None,
+    ) -> ScenarioRunResponse:
         """Stores live measurements, pushes them into the time-series store, and runs diagnosis."""
-        for m in measurements:
-            m.data_source = "live"
-            self._live_measurements[m.component_id] = m
+        from app.config import settings
+        from datetime import datetime, timezone
 
+        now = datetime.now(timezone.utc)
+        ttl = float(settings.live_ttl_seconds)
+
+        # 1. Backfill separation:
+        # In live mode: a measurement whose own timestamp is older than LIVE_TTL_SECONDS goes to history only.
+        # In demo mode: behaviour unchanged (preserves existing tests with hardcoded demo timestamps).
+        current_measurements: List[Any] = []
+        backfilled_measurements: List[Any] = []
+
+        if settings.data_mode == "live":
+            for m in measurements:
+                m.data_source = "live"
+                ts_str = getattr(m, "timestamp_utc", None) or getattr(m, "timestamp", None)
+                is_backfill = False
+                if ts_str:
+                    try:
+                        ts_clean = str(ts_str).replace("Z", "+00:00")
+                        m_dt = datetime.fromisoformat(ts_clean)
+                        if m_dt.tzinfo is None:
+                            m_dt = m_dt.replace(tzinfo=timezone.utc)
+                        if (now - m_dt).total_seconds() > ttl:
+                            is_backfill = True
+                    except Exception:
+                        pass
+
+                if is_backfill:
+                    backfilled_measurements.append(m)
+                else:
+                    current_measurements.append(m)
+        else:
+            current_measurements = list(measurements)
+            for m in current_measurements:
+                m.data_source = "live"
+
+        # Push to time-series store and persist all measurements
         from app.engine.time_series import get_time_series_store
         ts_store = get_time_series_store()
-        ts_store.push_measurements_batch(measurements)
+        if measurements:
+            ts_store.push_measurements_batch(measurements)
 
-        # Build full measurements list by overlaying live measurements onto baseline
-        baseline_meas = self.telemetry_generator.generate_baseline_with_noise()
-        active_meas_map = {m.component_id: m for m in baseline_meas}
-        for m in self._live_measurements.values():
-            active_meas_map[m.component_id] = m
-        active_measurements = list(active_meas_map.values())
+        # Backfill rule: if no current measurements exist, do not refresh received_at,
+        # do not trigger diagnosis, and do not open an incident.
+        if not current_measurements:
+            run_id = f"backfill-{uuid.uuid4().hex[:8]}"
+            self._persist_run(run_id=run_id, data_source="live", measurements=measurements)
+            return ScenarioRunResponse(
+                run_id=run_id,
+                data_source="live",
+                measurements_count=len(measurements),
+                incident_id=None,
+            )
+
+        # Update live measurements and arrival metadata for current readings
+        for m in current_measurements:
+            self._live_measurements[m.component_id] = m
+            ts_iso = getattr(m, "timestamp_utc", None) or getattr(m, "timestamp", None) or now.isoformat()
+            self._live_metadata[m.component_id] = {
+                "received_at": now,
+                "last_seen_utc": ts_iso,
+            }
+
+        # Build active measurements:
+        # In live mode: ONLY live and stale measurements. Never fill from baseline.
+        # In demo mode: overlay live readings onto baseline with noise.
+        if settings.data_mode == "live":
+            active_measurements = []
+            for comp_id, lm in self._live_measurements.items():
+                freshness, _ = self.get_freshness(comp_id, now=now)
+                if freshness in ("live", "stale"):
+                    active_measurements.append(lm)
+        else:
+            baseline_meas = self.telemetry_generator.generate_baseline_with_noise()
+            active_meas_map = {m.component_id: m for m in baseline_meas}
+            for m in self._live_measurements.values():
+                active_meas_map[m.component_id] = m
+            active_measurements = list(active_meas_map.values())
 
         run_id = f"live-{uuid.uuid4().hex[:8]}"
         self._runs[run_id] = RunMeasurementsResponse(
@@ -184,11 +255,15 @@ class HopTraceEngine:
             run_id=run_id,
         )
 
+        if hop_trace is not None and hasattr(incident, "hop_trace"):
+            incident.hop_trace = hop_trace
+
         incident_id: Optional[str] = None
         if incident.suspected_component_id is not None and incident.status == "open":
             incident_id = incident.id
             self._incidents[incident.id] = incident
             self._incident_order.append(incident.id)
+            self._persist_incident(incident)
         else:
             self.close_open_incidents()
 
@@ -224,22 +299,104 @@ class HopTraceEngine:
         except Exception:
             pass
 
+    def _persist_incident(self, incident: IncidentDetails) -> None:
+        """Persists open diagnostic incident with extras (cause, hop_trace) into SQLite."""
+        try:
+            from app.db.connection import get_db_connection
+            from app.db.repository import create_incident
+            conn = get_db_connection()
+            try:
+                inc_dict = incident.model_dump() if hasattr(incident, "model_dump") else incident.dict()
+                create_incident(conn, inc_dict)
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
     def get_live_measurements(self) -> Dict[str, Any]:
         """Returns currently ingested live measurements indexed by component ID."""
         return self._live_measurements
 
+    def get_freshness(
+        self,
+        component_id: str,
+        now: Optional[datetime] = None,
+    ) -> Tuple[str, Optional[str]]:
+        """Returns (freshness, last_seen_utc) per HopTrace Part 1 Contract §2.1.
+
+        Rules: Let age = now - received_at:
+          - age <= LIVE_TTL_SECONDS -> 'live'
+          - LIVE_TTL_SECONDS < age <= 3 * LIVE_TTL_SECONDS -> 'stale'
+          - older, or never seen, in live mode -> 'no_data'
+          - DATA_MODE=demo and link never had live data -> 'simulated'
+        """
+        from app.config import settings
+
+        if now is None:
+            now = datetime.now(timezone.utc)
+        elif now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+
+        meta = self._live_metadata.get(component_id)
+        if not meta or "received_at" not in meta:
+            if settings.data_mode == "live":
+                return "no_data", None
+            return "simulated", None
+
+        received_at = meta["received_at"]
+        if received_at.tzinfo is None:
+            received_at = received_at.replace(tzinfo=timezone.utc)
+
+        age = max(0.0, (now - received_at).total_seconds())
+        last_seen_utc = meta.get("last_seen_utc")
+
+        ttl = float(settings.live_ttl_seconds)
+        if age <= ttl:
+            return "live", last_seen_utc
+        elif age <= 3.0 * ttl:
+            return "stale", last_seen_utc
+        else:
+            if settings.data_mode == "live":
+                return "no_data", last_seen_utc
+            return "simulated", last_seen_utc
+
     def clear_live_measurements(self) -> None:
-        """Clears all ingested live measurements."""
+        """Clears all ingested live measurements and metadata."""
         self._live_measurements.clear()
+        self._live_metadata.clear()
 
     def close_open_incidents(self) -> List[str]:
-        """Marks all currently open incidents in the engine store as closed."""
+        """Marks all currently open incidents in the engine store and SQLite as closed."""
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
         closed_ids = []
         for inc_id in self._incident_order:
             inc = self._incidents.get(inc_id)
             if inc and inc.status == "open":
                 inc.status = "closed"
+                if hasattr(inc, "resolved_at"):
+                    inc.resolved_at = now_iso
+                if hasattr(inc, "duration_seconds") and getattr(inc, "created_at", None):
+                    try:
+                        c_dt = datetime.fromisoformat(str(inc.created_at).replace("Z", "+00:00"))
+                        if c_dt.tzinfo is None:
+                            c_dt = c_dt.replace(tzinfo=timezone.utc)
+                        inc.duration_seconds = max(0, int((now - c_dt).total_seconds()))
+                    except Exception:
+                        pass
                 closed_ids.append(inc_id)
+
+        try:
+            from app.db.connection import get_db_connection
+            from app.db.repository import close_open_incidents as repo_close_open
+            conn = get_db_connection()
+            try:
+                repo_close_open(conn)
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
         return closed_ids
 
     def get_latest_open_incident(self) -> Optional[IncidentDetails]:
@@ -361,12 +518,22 @@ def run_scenario(
     )
 
 
-def ingest_live_measurements(measurements: List[Any]) -> ScenarioRunResponse:
-    return get_engine().ingest_live_measurements(measurements)
+def ingest_live_measurements(
+    measurements: List[Any],
+    hop_trace: Optional[List[Any]] = None,
+) -> ScenarioRunResponse:
+    return get_engine().ingest_live_measurements(measurements, hop_trace=hop_trace)
 
 
 def get_live_measurements() -> Dict[str, Any]:
     return get_engine().get_live_measurements()
+
+
+def get_freshness(
+    component_id: str,
+    now: Optional[datetime] = None,
+) -> Tuple[str, Optional[str]]:
+    return get_engine().get_freshness(component_id, now=now)
 
 
 def clear_live_measurements() -> None:
