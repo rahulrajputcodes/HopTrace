@@ -182,6 +182,10 @@ const useStore = create((set, get) => ({
   // ── Loading ─────────────────────────────────────────────────────────────
   loading: false,
   setLoading: (v) => set({ loading: v }),
+
+  // ── M3: User role (operator | viewer) ───────────────────────────────────
+  userRole: 'operator',
+  setUserRole: (role) => set({ userRole: role }),
 }));
 
 export default useStore;

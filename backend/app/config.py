@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     # --- API ---
     app_version: str = "0.1.0"
 
+    # --- M2 Auth & RBAC ---
+    auth_disabled: bool = False
+    auth_secret: str = ""
+    auth_token_expire_minutes: int = 1440
+    operator_password: str = ""
+    viewer_password: str = ""
+    evaluator_password: str = ""
+    login_rate_limit_per_minute: int = 10
+
     # --- CORS ---
     # Comma-separated list of allowed origins for CORS.
     # Default: only the local Vite dev server used by Member 3 (frontend).
@@ -87,6 +96,15 @@ class Settings(BaseSettings):
     twilio_auth_token: str = ""
     twilio_from_number: str = ""
     twilio_whatsapp_from_number: str = ""
+
+    # M3: Notification Real-Send Allowlist
+    # Comma-separated E.164 phone numbers permitted for real live Twilio sends.
+    # Any destination outside this allowlist is safely routed through the console/sandbox provider.
+    real_send_allowlist: str = ""
+
+    @property
+    def real_send_allowlist_set(self) -> set[str]:
+        return {p.strip() for p in self.real_send_allowlist.split(",") if p.strip()}
 
     @field_validator("sarvam_model", mode="before")
     @classmethod

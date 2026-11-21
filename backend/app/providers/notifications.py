@@ -5,7 +5,7 @@ Implements:
 - NotificationProvider: Abstract base class for outage alert delivery.
 - UnavailableNotificationProvider: Honest default raising NotificationProviderUnavailableError (HTTP 503).
 - ConsoleNotificationProvider: Demo and testing provider logging messages and recording them in memory.
-- TwilioNotificationProvider: Twilio SMS and WhatsApp provider (enabled when TWILIO_* credentials exist).
+- TwilioNotificationProvider: Twilio SMS and WhatsApp provider (enforces REAL_SEND_ALLOWLIST).
 """
 from __future__ import annotations
 
@@ -16,10 +16,35 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from uuid import uuid4
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
+
+
+def _mask_phone(phone: str) -> str:
+    """
+    Mask subscriber phone numbers in logs to protect privacy.
+
+    Examples:
+        +919876543210  ->  +91****43210
+        9876543210     ->  ****543210
+        short          ->  ****
+    """
+    if not phone:
+        return "****"
+    cleaned = phone.strip()
+    if len(cleaned) <= 4:
+        return "****"
+    # Keep prefix (+CC) and last 4 digits, mask the rest
+    if cleaned.startswith("+") and len(cleaned) >= 7:
+        prefix = cleaned[:3]  # e.g. "+91"
+        suffix = cleaned[-4:]
+        return f"{prefix}****{suffix}"
+    suffix = cleaned[-4:]
+    return f"****{suffix}"
 
 
 class NotificationProviderUnavailableError(RuntimeError):
@@ -121,12 +146,13 @@ class ConsoleNotificationProvider(NotificationProvider):
             "subscriber_id": subscriber_id,
             "message": message,
             "provider": "console",
+            "sandboxed": True,
         }
         self.sent_messages.append(record)
         logger.info(
-            "[CONSOLE OUTAGE NOTIFICATION] Channel: %s | To: %s | Sub: %s | ID: %s | Message: %s",
+            "[CONSOLE SANDBOX NOTIFICATION] Channel: %s | To: %s | Sub: %s | ID: %s | Message: %s",
             channel.upper(),
-            recipient,
+            _mask_phone(recipient),
             subscriber_id or "—",
             msg_id,
             message,
@@ -138,6 +164,7 @@ class TwilioNotificationProvider(NotificationProvider):
     """
     Twilio notification provider supporting SMS and WhatsApp dispatch via Twilio REST API.
     Enabled only when TWILIO_* credentials are valid and non-blank.
+    Enforces REAL_SEND_ALLOWLIST: unapproved numbers are routed safely through the sandbox.
     """
 
     def __init__(
@@ -147,6 +174,7 @@ class TwilioNotificationProvider(NotificationProvider):
         from_number: str,
         whatsapp_from_number: Optional[str] = None,
         timeout_seconds: float = 15.0,
+        allowlist: Optional[Set[str]] = None,
     ) -> None:
         if not account_sid or not account_sid.strip():
             raise NotificationProviderUnavailableError(
@@ -166,6 +194,13 @@ class TwilioNotificationProvider(NotificationProvider):
         self.from_number = from_number.strip()
         self.whatsapp_from_number = (whatsapp_from_number or from_number).strip()
         self.timeout_seconds = timeout_seconds
+        self._allowlist = allowlist
+
+    @property
+    def allowlist(self) -> Set[str]:
+        if self._allowlist is not None:
+            return self._allowlist
+        return settings.real_send_allowlist_set
 
     @property
     def provider_name(self) -> str:
@@ -178,17 +213,38 @@ class TwilioNotificationProvider(NotificationProvider):
         channel: str = "sms",
         subscriber_id: Optional[str] = None,
     ) -> Dict[str, Any]:
+        norm_recipient = recipient.strip()
         channel_lower = channel.lower().strip()
+
+        # Real-send allowlist enforcement (M3)
+        # Only explicitly allowlisted numbers receive real Twilio calls
+        if norm_recipient not in self.allowlist:
+            sandbox_id = f"sandbox-{uuid4().hex[:8]}"
+            logger.info(
+                "[TWILIO SANDBOX ROUTED] Recipient %s not in REAL_SEND_ALLOWLIST; routing to sandbox. ID: %s",
+                _mask_phone(norm_recipient),
+                sandbox_id,
+            )
+            return {
+                "message_id": sandbox_id,
+                "status": "sent",
+                "recipient": recipient,
+                "channel": channel_lower,
+                "subscriber_id": subscriber_id,
+                "provider": "console",
+                "sandboxed": True,
+            }
+
         if channel_lower == "whatsapp":
             from_target = self.whatsapp_from_number
             if not from_target.startswith("whatsapp:"):
                 from_target = f"whatsapp:{from_target}"
-            to_target = recipient.strip()
+            to_target = norm_recipient
             if not to_target.startswith("whatsapp:"):
                 to_target = f"whatsapp:{to_target}"
         else:
             from_target = self.from_number
-            to_target = recipient.strip()
+            to_target = norm_recipient
 
         url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
         form_data = urllib.parse.urlencode({
@@ -209,6 +265,14 @@ class TwilioNotificationProvider(NotificationProvider):
                 data = json.loads(resp_bytes.decode("utf-8"))
                 sid = data.get("sid", f"twilio-{uuid4().hex[:8]}")
                 msg_status = data.get("status", "sent")
+                logger.info(
+                    "[TWILIO SENT] Channel: %s | To: %s | Sub: %s | SID: %s | Status: %s",
+                    channel_lower.upper(),
+                    _mask_phone(norm_recipient),
+                    subscriber_id or "—",
+                    sid,
+                    msg_status,
+                )
                 return {
                     "message_id": sid,
                     "status": msg_status,
@@ -216,13 +280,25 @@ class TwilioNotificationProvider(NotificationProvider):
                     "channel": channel_lower,
                     "subscriber_id": subscriber_id,
                     "provider": "twilio",
+                    "sandboxed": False,
                 }
         except urllib.error.HTTPError as exc:
             raw_err = exc.read().decode("utf-8", errors="replace")
+            logger.error(
+                "[TWILIO ERROR] HTTP %s sending to %s: %s",
+                exc.code,
+                _mask_phone(norm_recipient),
+                raw_err[:200],
+            )
             raise NotificationDeliveryError(
-                f"Twilio API error HTTP {exc.code}: {raw_err}"
+                f"Twilio API error HTTP {exc.code}."
             ) from exc
         except Exception as exc:
+            logger.error(
+                "[TWILIO FAILURE] Sending to %s: %s",
+                _mask_phone(norm_recipient),
+                type(exc).__name__,
+            )
             raise NotificationDeliveryError(
                 f"Twilio transmission failure: {exc}"
             ) from exc
