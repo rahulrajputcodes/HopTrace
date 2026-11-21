@@ -21,6 +21,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SQLITE_DB_PATH=/app/data/hoptrace.db \
     FRONTEND_DIST_DIR=/app/static
 
+# Install gosu for secure privilege drop in entrypoint
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+
 # Create non-root system user and group
 RUN groupadd -g 10001 hoptrace && \
     useradd -u 10001 -g hoptrace -s /bin/bash -m hoptrace
@@ -47,9 +50,9 @@ USER hoptrace
 
 EXPOSE 8000
 
-# Healthcheck using Python standard library
+# Healthcheck using Python standard library (dynamic port support)
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).getcode() == 200 else 1)"
+    CMD python -c "import urllib.request, os, sys; port = os.environ.get('PORT', '8000'); sys.exit(0 if urllib.request.urlopen(f'http://127.0.0.1:{port}/api/v1/health', timeout=5).getcode() == 200 else 1)"
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
