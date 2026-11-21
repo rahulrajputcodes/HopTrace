@@ -322,34 +322,65 @@ class SarvamExplanationProvider(ExplanationProvider):
         """
         Synthesize text into speech audio bytes (base64-encoded) using Sarvam Bulbul TTS API.
 
+        API reference: https://docs.sarvam.ai/api-reference-docs/endpoints/text-to-speech
+        Endpoint: POST https://api.sarvam.ai/text-to-speech
+        Authentication: api-subscription-key header
+        Request body fields: text (string), language_code, model, speaker, pace,
+                             speech_sample_rate, output_audio_codec, enable_preprocessing
+        Response: { "audios": ["<base64_wav>"] }
+
+        Valid speakers (Bulbul v2): meera, pavithra, maitreyi, arvind, amol, amartya,
+                                    diya, neel, misha, vian, arjun, maya
+        Additional Bulbul v4-flash speakers: shubh, shubh_enhi_ads, simran_en_customer
+
         Args:
-            text: Text to synthesize (max 500 characters).
-            language_code: Target language code (e.g. 'hi-IN', 'en-IN').
-            speaker: Speaker persona ('meera', 'shubh', etc.).
+            text: Text to synthesize. VoiceRequest schema enforces max_length=500.
+            language_code: BCP-47 target language code (e.g. 'hi-IN', 'en-IN').
+            speaker: Speaker persona identifier (see valid speakers above).
 
         Returns:
-            Base64 encoded MP3/WAV audio string.
+            Base64-encoded WAV audio string.
+
+        Raises:
+            ValueError: If text is empty or speaker is invalid.
+            ExplanationProviderUnavailableError: If the Sarvam TTS API fails.
         """
         if not self._api_key:
             raise ExplanationProviderUnavailableError(
                 "Sarvam API key is not configured for voice synthesis."
             )
 
-        clean_text = text.strip()[:500]
+        clean_text = (text or "").strip()
         if not clean_text:
             raise ValueError("Text for speech synthesis cannot be empty.")
 
+        # Validate speaker against known Sarvam Bulbul speaker identifiers.
+        _VALID_SPEAKERS = {
+            # Bulbul v2 speakers
+            "meera", "pavithra", "maitreyi", "arvind", "amol", "amartya",
+            "diya", "neel", "misha", "vian", "arjun", "maya",
+            # Bulbul v4-flash speakers
+            "shubh", "shubh_enhi_ads", "simran_en_customer",
+        }
+        clean_speaker = (speaker or "meera").strip().lower()
+        if clean_speaker not in _VALID_SPEAKERS:
+            raise ValueError(
+                f"Unknown Sarvam speaker '{speaker}'. "
+                f"Valid speakers: {sorted(_VALID_SPEAKERS)}."
+            )
+
+        # Sarvam TTS API uses 'text' (single string) and 'language_code'.
+        # Reference: https://docs.sarvam.ai/api-reference-docs/endpoints/text-to-speech
         payload = json.dumps(
             {
-                "inputs": [clean_text],
-                "target_language_code": language_code,
-                "speaker": speaker,
-                "pitch": 0,
+                "text": clean_text,
+                "language_code": language_code,
+                "model": "bulbul:v2",
+                "speaker": clean_speaker,
                 "pace": 1.0,
-                "loudness": 1.5,
-                "speech_sample_rate": 8000,
+                "speech_sample_rate": 22050,
                 "enable_preprocessing": True,
-                "model": "bulbul:v1",
+                "output_audio_codec": "wav",
             }
         ).encode("utf-8")
 
