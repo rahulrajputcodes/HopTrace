@@ -136,7 +136,11 @@ app.include_router(explanations_router,  prefix=API_PREFIX, tags=["explanations"
 
 # Realtime WebSocket
 app.include_router(telemetry_ws_router,  prefix=API_PREFIX, tags=["telemetry"])
-app.include_router(telemetry_ws_router,  tags=["realtime"])
+app.include_router(telemetry_ws_router,  tags=["realtime"])   # WebSocket (no prefix)
+
+# M4 public status (no RBAC — public village status page)
+from app.api.public_status import router as public_status_router  # noqa: E402
+app.include_router(public_status_router, prefix=API_PREFIX, tags=["public"])
 
 
 # --- Production SPA static file serving (Layout B: Single-Container PaaS) ---
