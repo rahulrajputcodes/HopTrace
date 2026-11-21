@@ -98,3 +98,38 @@ app.include_router(explanations_router,  prefix=API_PREFIX, tags=["explanations"
 app.include_router(agents_router,        prefix=API_PREFIX, tags=["agents"])
 app.include_router(telemetry_ws_router,  prefix=API_PREFIX, tags=["telemetry"])
 app.include_router(telemetry_ws_router,  tags=["realtime"])   # WebSocket (no prefix)
+app.include_router(health_router,        tags=["health"])     # Root /health alias for PaaS
+
+
+# --- Production SPA static file serving (Layout B: Single-Container PaaS) ---
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from fastapi import HTTPException
+
+_FRONTEND_DIST = os.environ.get(
+    "FRONTEND_DIST_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static"),
+)
+if not os.path.isdir(_FRONTEND_DIST):
+    _alt_dist = os.path.join(os.getcwd(), "frontend", "dist")
+    if os.path.isdir(_alt_dist):
+        _FRONTEND_DIST = _alt_dist
+
+if os.path.isdir(_FRONTEND_DIST):
+    _assets_dir = os.path.join(_FRONTEND_DIST, "assets")
+    if os.path.isdir(_assets_dir):
+        app.mount("/assets", StaticFiles(directory=_assets_dir), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("ws/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(_FRONTEND_DIST, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(_FRONTEND_DIST, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend index.html not found")
+
