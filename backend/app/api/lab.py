@@ -70,6 +70,13 @@ def run_lab_scenario(
                 detail=f"Target link '{payload.target_link_id}' not found in network topology. "
                        f"Valid links: {sorted(known_links)}",
             )
+    elif payload.scenario == "gradual_degradation":
+        if payload.target_link_id not in known_links:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Target link '{payload.target_link_id}' not found in network topology. "
+                       f"Valid links: {sorted(known_links)}",
+            )
     elif payload.scenario == "access_point_failure":
         if payload.target_node_id not in known_ap_nodes:
             raise HTTPException(
@@ -86,13 +93,34 @@ def run_lab_scenario(
 
     # 2. Execute scenario via engine facade
     try:
-        sim_response = run_scenario(
-            scenario=payload.scenario,
-            target_link_id=payload.target_link_id,
-            target_node_id=payload.target_node_id,
-            severity=payload.severity,
-            force_in_memory=True,
-        )
+        engine = get_engine()
+
+        # gradual_degradation: register ramp state, then run tick-0 snapshot.
+        # At progress=0 the link is at baseline so incident_id is expected null.
+        if payload.scenario == "gradual_degradation":
+            engine.start_ramp(
+                target_link_id=payload.target_link_id,  # type: ignore[arg-type]
+                severity=payload.severity,
+            )
+            sim_response = engine.run_scenario(
+                scenario="gradual_degradation",
+                target_link_id=payload.target_link_id,
+                severity=payload.severity,
+                ramp_progress=0.0,
+                force_in_memory=True,
+            )
+        else:
+            # Any non-ramp scenario clears the ramp so the streaming loop reverts to baseline.
+            if payload.scenario != "baseline":
+                # Non-baseline, non-ramp: clear any stale ramp state
+                engine.clear_ramp()
+            sim_response = engine.run_scenario(
+                scenario=payload.scenario,
+                target_link_id=payload.target_link_id,
+                target_node_id=payload.target_node_id,
+                severity=payload.severity,
+                force_in_memory=True,
+            )
     except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
