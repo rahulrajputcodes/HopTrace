@@ -8,7 +8,7 @@ Optional[float] because the contract says they must be null when unavailable.
 from __future__ import annotations
 
 from typing import Literal, Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 # ── Node ────────────────────────────────────────────────────────────────────
@@ -22,6 +22,10 @@ class TopologyNode(BaseModel):
     type: NodeType
     label: str
     status: NodeStatus
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lon: Optional[float] = Field(None, ge=-180, le=180)
+    village: Optional[str] = None
+    coverage_radius_m: Optional[int] = Field(None, gt=0)
 
 
 # ── Link ────────────────────────────────────────────────────────────────────
@@ -37,6 +41,9 @@ class TopologyLink(BaseModel):
     latency_ms: Optional[float] = None
     packet_loss_pct: Optional[float] = None
     throughput_mbps: Optional[float] = None
+    distance_km: Optional[float] = None
+    medium: Optional[str] = None
+    frequency: Optional[str] = None
 
 
 # ── Top-level response ───────────────────────────────────────────────────────

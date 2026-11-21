@@ -17,7 +17,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
+from app.db.init import DEMO_INCIDENTS
 from app.main import app
+
+DEMO_INCIDENT_ID = DEMO_INCIDENTS[0]["id"]
 from app.providers.explanations import (
     ExplanationProvider,
     ExplanationProviderUnavailableError,
@@ -52,21 +55,21 @@ def test_explain_empty_language_returns_422(client: TestClient, isolated_db: str
     """Empty or whitespace-only language must return 422 Unprocessable Entity."""
     # Empty string
     r1 = client.post(
-        "/api/v1/incidents/incident-001/explain",
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
         json={"language": ""},
     )
     assert r1.status_code == 422
 
     # Whitespace only
     r2 = client.post(
-        "/api/v1/incidents/incident-001/explain",
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
         json={"language": "   "},
     )
     assert r2.status_code == 422
 
     # Missing field
     r3 = client.post(
-        "/api/v1/incidents/incident-001/explain",
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
         json={},
     )
     assert r3.status_code == 422
@@ -75,7 +78,7 @@ def test_explain_empty_language_returns_422(client: TestClient, isolated_db: str
 def test_explain_provider_unavailable_returns_503(client: TestClient, isolated_db: str) -> None:
     """When the default unavailable provider is active, explain endpoint returns 503."""
     resp = client.post(
-        "/api/v1/incidents/incident-001/explain",
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
         json={"language": "hi"},
     )
     assert resp.status_code == 503
@@ -87,14 +90,14 @@ def test_explain_success_with_provider(client: TestClient, isolated_db: str) -> 
     app.dependency_overrides[get_explanation_provider] = lambda: MockWorkingExplanationProvider()
     try:
         resp = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["incident_id"] == "incident-001"
+        assert data["incident_id"] == DEMO_INCIDENT_ID
         assert data["language"] == "hi"
-        assert "incident-001" in data["explanation"]
+        assert DEMO_INCIDENT_ID in data["explanation"]
         assert data["provider"] == "mock_provider"
     finally:
         app.dependency_overrides.pop(get_explanation_provider, None)
@@ -188,12 +191,12 @@ def test_sarvam_provider_mock_hindi_success(client: TestClient, isolated_db: str
 
     with patch("urllib.request.urlopen", return_value=_make_mock_response(raw_response)):
         resp = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["incident_id"] == "incident-001"
+        assert data["incident_id"] == DEMO_INCIDENT_ID
         assert data["language"] == "hi"
         assert data["explanation"] == hindi_text
         assert data["provider"] == "sarvam"
@@ -219,7 +222,7 @@ def test_sarvam_provider_mock_auth_failure_returns_503(
 
     with patch("urllib.request.urlopen", side_effect=http_error):
         resp = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp.status_code == 503
@@ -239,7 +242,7 @@ def test_sarvam_provider_mock_timeout_returns_503(
 
     with patch("urllib.request.urlopen", side_effect=TimeoutError()):
         resp = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp.status_code == 503
@@ -258,7 +261,7 @@ def test_sarvam_provider_mock_network_error_returns_503(
 
     with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("DNS resolution failed")):
         resp = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp.status_code == 503
@@ -275,7 +278,7 @@ def test_sarvam_provider_mock_malformed_response_returns_503(
     # Non-JSON
     with patch("urllib.request.urlopen", return_value=_make_mock_response(b"<html>502 Bad Gateway</html>")):
         resp1 = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp1.status_code == 503
@@ -284,7 +287,7 @@ def test_sarvam_provider_mock_malformed_response_returns_503(
     # Missing choices
     with patch("urllib.request.urlopen", return_value=_make_mock_response(b'{"status": "ok"}')):
         resp2 = client.post(
-            "/api/v1/incidents/incident-001/explain",
+            f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
             json={"language": "hi"},
         )
         assert resp2.status_code == 503
@@ -299,7 +302,7 @@ def test_sarvam_provider_missing_key_via_api_returns_503(
     monkeypatch.setattr(settings, "sarvam_api_key", "")
 
     resp = client.post(
-        "/api/v1/incidents/incident-001/explain",
+        f"/api/v1/incidents/{DEMO_INCIDENT_ID}/explain",
         json={"language": "hi"},
     )
     assert resp.status_code == 503

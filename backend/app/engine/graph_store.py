@@ -10,7 +10,7 @@ Includes:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from backend.app.engine.models import (
+from .models import (
     AffectedSubscriber,
     AffectedSubscribersResponse,
     NetworkTopology,
@@ -18,8 +18,8 @@ from backend.app.engine.models import (
     TopologyNode,
     Subscriber,
 )
-from backend.app.engine.neo4j_client import Neo4jClient, get_neo4j_client
-from backend.app.engine.topology import (
+from .neo4j_client import Neo4jClient, get_neo4j_client
+from .topology import (
     InMemoryTopologyGraph,
     get_default_links,
     get_default_nodes,

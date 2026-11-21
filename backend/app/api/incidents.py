@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.db.connection import get_db
-from app.db.repository import get_incident, get_latest_incident
+from app.db.repository import get_incident, get_latest_incident, get_latest_open_incident
 from app.engine.facade import get_incident_details, get_latest_incident as get_engine_latest_incident
 from app.providers.dependencies import (
     DependencyAnalysisAdapter,
@@ -42,9 +42,9 @@ router = APIRouter(tags=["incidents"])
 def get_latest(
     db: sqlite3.Connection = Depends(get_db),
 ) -> Optional[IncidentResponse]:
-    """Retrieve the most recent incident or return null."""
-    # 1. Check operational storage for the latest incident
-    incident = get_latest_incident(db)
+    """Retrieve the most recent open incident (status != 'closed') or return null."""
+    # 1. Query only open incidents from operational storage
+    incident = get_latest_open_incident(db)
     if incident is None:
         return None
 
@@ -52,9 +52,14 @@ def get_latest(
     try:
         engine_incident = get_incident_details(incident["id"])
         if engine_incident is not None:
+            if engine_incident.status == "closed":
+                return None
             return IncidentResponse.model_validate(engine_incident.model_dump())
     except Exception:
         pass
+
+    if incident.get("status") == "closed":
+        return None
 
     return IncidentResponse(**incident)
 

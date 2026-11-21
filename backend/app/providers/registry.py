@@ -18,6 +18,7 @@ from app.providers.explanations import (
     ExplanationProvider,
     ExplanationProviderUnavailableError,
     SarvamExplanationProvider,
+    SimulatedExplanationProvider,
     UnavailableExplanationProvider,
 )
 from app.providers.simulated import SimulatedTopologyProvider
@@ -80,6 +81,7 @@ def get_explanation_provider() -> ExplanationProvider:
     Supported EXPLANATION_PROVIDER values:
       unavailable - Explicitly unavailable provider (raises ExplanationProviderUnavailableError)
       sarvam      - Sarvam AI chat-completions endpoint (requires SARVAM_API_KEY)
+      simulated   - High-fidelity offline / demo explanations (grounded in incident facts)
     """
     name = settings.explanation_provider.lower()
 
@@ -93,7 +95,10 @@ def get_explanation_provider() -> ExplanationProvider:
             timeout_seconds=settings.sarvam_timeout_seconds,
         )
 
+    if name == "simulated":
+        return SimulatedExplanationProvider()
+
     raise ValueError(
         f"Unknown EXPLANATION_PROVIDER={name!r}. "
-        "Valid values: 'unavailable', 'sarvam'."
+        "Valid values: 'unavailable', 'sarvam', 'simulated'."
     )

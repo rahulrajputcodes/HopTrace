@@ -17,17 +17,17 @@ from __future__ import annotations
 
 import uuid
 from typing import Any, Dict, List, Optional
-from backend.app.engine.diagnostics import DiagnosticEngine
-from backend.app.engine.graph_store import InMemoryGraphStore, Neo4jGraphStore
-from backend.app.engine.models import (
+from .diagnostics import DiagnosticEngine
+from .graph_store import InMemoryGraphStore, Neo4jGraphStore
+from .models import (
     AffectedSubscribersResponse,
     IncidentDetails,
     NetworkTopology,
     RunMeasurementsResponse,
     ScenarioRunResponse,
 )
-from backend.app.engine.neo4j_client import get_neo4j_client
-from backend.app.engine.telemetry import RAMP_TICKS, SimulatedTelemetryGenerator
+from .neo4j_client import get_neo4j_client
+from .telemetry import RAMP_TICKS, SimulatedTelemetryGenerator
 
 
 class HopTraceEngine:
@@ -84,6 +84,11 @@ class HopTraceEngine:
 
     def get_ramp_state(self) -> Optional[Dict[str, Any]]:
         """Returns the current ramp state dict or None if no ramp is active."""
+        return self._ramp
+
+    @property
+    def ramp_state(self) -> Optional[Dict[str, Any]]:
+        """Property returning the current ramp state dict or None."""
         return self._ramp
 
     def advance_ramp_tick(self) -> float:
@@ -188,6 +193,9 @@ class HopTraceEngine:
             incident_id = incident.id
             self._incidents[incident.id] = incident
             self._incident_order.append(incident.id)
+        else:
+            # Baseline or any run that yields no open incident clears active faults
+            self.close_open_incidents()
 
         return ScenarioRunResponse(
             run_id=run_id,
@@ -195,6 +203,24 @@ class HopTraceEngine:
             measurements_count=len(measurements),
             incident_id=incident_id,
         )
+
+    def close_open_incidents(self) -> List[str]:
+        """Marks all currently open incidents in the engine store as closed."""
+        closed_ids = []
+        for inc_id in self._incident_order:
+            inc = self._incidents.get(inc_id)
+            if inc and inc.status == "open":
+                inc.status = "closed"
+                closed_ids.append(inc_id)
+        return closed_ids
+
+    def get_latest_open_incident(self) -> Optional[IncidentDetails]:
+        """Returns the most recent incident with status == 'open', or None."""
+        for inc_id in reversed(self._incident_order):
+            inc = self._incidents.get(inc_id)
+            if inc and inc.status == "open":
+                return inc
+        return None
 
     def get_incident_details(self, incident_id: str) -> Optional[IncidentDetails]:
         """Retrieves incident details by ID."""
@@ -281,6 +307,14 @@ def get_incident_details(incident_id: str) -> Optional[IncidentDetails]:
 
 def get_latest_incident() -> Optional[IncidentDetails]:
     return get_engine().get_latest_incident()
+
+
+def get_latest_open_incident() -> Optional[IncidentDetails]:
+    return get_engine().get_latest_open_incident()
+
+
+def close_open_incidents() -> List[str]:
+    return get_engine().close_open_incidents()
 
 
 def get_affected_subscribers(

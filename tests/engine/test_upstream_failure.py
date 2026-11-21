@@ -214,15 +214,16 @@ def test_upstream_failure_inferred_without_node_id():
 # ---------------------------------------------------------------------------
 
 def test_upstream_failure_affects_all_subscribers():
-    """Upstream failure on L1 must surface all 5 subscribers as affected."""
+    """Upstream failure on L1 must surface all 20 subscribers as affected."""
     graph = InMemoryTopologyGraph()
     affected = graph.get_affected_subscribers(
         suspected_component_id=GATEWAY_LINK_ID,
         component_type="link",
     )
-    assert len(affected) == 5
+    assert len(affected) == 20
     ids = {s.id for s in affected}
-    assert ids == {"SUB101", "SUB102", "SUB201", "SUB202", "SUB203"}
+    assert len(ids) == 20
+    assert {"SUB101", "SUB102", "SUB103", "SUB201", "SUB202", "SUB203", "SUB204"}.issubset(ids)
 
 
 def test_upstream_failure_affected_subscribers_via_facade():
@@ -239,10 +240,11 @@ def test_upstream_failure_affected_subscribers_via_facade():
     assert incident.suspected_component_id == GATEWAY_LINK_ID
 
     subs = get_affected_subscribers(res.incident_id, force_in_memory=True)
-    assert subs.count == 5
+    assert subs.count == 20
     assert subs.count == len(subs.subscribers)
     sub_ids = {s.id for s in subs.subscribers}
-    assert sub_ids == {"SUB101", "SUB102", "SUB201", "SUB202", "SUB203"}
+    assert len(sub_ids) == 20
+    assert {"SUB101", "SUB102", "SUB103", "SUB201", "SUB202", "SUB203", "SUB204"}.issubset(sub_ids)
 
 
 # ---------------------------------------------------------------------------

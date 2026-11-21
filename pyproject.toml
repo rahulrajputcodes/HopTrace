@@ -2,7 +2,7 @@
 # Run tests from the repo root with: backend/.venv/bin/python -m pytest tests/ -v
 # The backend source is on the path so imports like `from app.xxx import ...` work.
 testpaths = ["tests"]
-pythonpath = ["backend"]
+pythonpath = ["backend", "."]
 # Silence the asyncio fixture loop-scope warning; all our tests are sync.
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"

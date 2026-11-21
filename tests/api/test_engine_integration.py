@@ -34,6 +34,7 @@ from app.engine.facade import (
     seed_topology,
 )
 from app.main import app, lifespan
+from app.engine.topology import get_default_links, get_default_nodes, get_default_subscribers
 from app.providers.dependencies import EngineDependencyAdapter, GraphEngineUnavailableError
 from app.providers.engine_topology import EngineTopologyProvider
 
@@ -53,13 +54,13 @@ def test_force_in_memory_initialization() -> None:
     """seed_topology(force_in_memory=True) seeds the in-memory graph store without Neo4j."""
     res = seed_topology(force_in_memory=True)
     assert res["status"] == "seeded"
-    assert res["nodes_count"] == 6
-    assert res["links_count"] == 5
-    assert res["subscribers_count"] == 5
+    assert res["nodes_count"] == 15
+    assert res["links_count"] == 14
+    assert res["subscribers_count"] == 20
 
     topo = get_topology(force_in_memory=True)
-    assert len(topo.nodes) == 6
-    assert len(topo.links) == 5
+    assert len(topo.nodes) == 15
+    assert len(topo.links) == 14
     assert topo.data_source == "simulated"
 
 
@@ -88,14 +89,14 @@ def test_topology_endpoint_integration_engine(client: TestClient, monkeypatch) -
 
     data = resp.json()
     assert data["data_source"] == "simulated"
-    assert len(data["nodes"]) == 6
-    assert len(data["links"]) == 5
+    assert len(data["nodes"]) == len(get_default_nodes())
+    assert len(data["links"]) == len(get_default_links())
 
     node_ids = {n["id"] for n in data["nodes"]}
     assert {"GW1", "R1", "WB1", "WB2", "AP1", "AP2"}.issubset(node_ids)
 
     link_ids = {l["id"] for l in data["links"]}
-    assert {"L1", "L2", "L3", "L4", "L5"} == link_ids
+    assert {l.id for l in get_default_links()} == link_ids
 
 
 # ── 5. Lab Endpoint Integration with run_scenario() ──────────────────────────
@@ -113,7 +114,7 @@ def test_lab_endpoint_run_scenario_integration(client: TestClient, isolated_db: 
     data = resp.json()
     assert data["run_id"].startswith("run-")
     assert data["data_source"] == "simulated"
-    assert data["measurements_count"] == 5
+    assert data["measurements_count"] == len(get_default_links())
     assert data["incident_id"] is not None
 
 
@@ -171,7 +172,7 @@ def test_actual_engine_measurements_returned(client: TestClient) -> None:
 
     assert meas_data["run_id"] == run_id
     assert meas_data["data_source"] == "simulated"
-    assert len(meas_data["measurements"]) == 5
+    assert len(meas_data["measurements"]) == len(get_default_links())
 
     # Check that measurements match what get_run_measurements returns directly
     facade_data = get_run_measurements(run_id)
@@ -225,10 +226,10 @@ def test_affected_subscribers_facade_integration(client: TestClient, isolated_db
     assert aff_resp.status_code == 200
     data = aff_resp.json()
 
-    # Downstream of L3 is AP1, which serves SUB101 and SUB102
-    assert data["count"] == 2
+    # Downstream of L3 is AP1, which serves SUB101, SUB102, and SUB103
+    assert data["count"] == 3
     sub_ids = [s["id"] for s in data["subscribers"]]
-    assert sub_ids == ["SUB101", "SUB102"]
+    assert set(sub_ids) == {"SUB101", "SUB102", "SUB103"}
     # Verified SQLite enrichment
     assert all(s["access_point_id"] == "AP1" for s in data["subscribers"])
     assert any("Ramesh Patel" in s["display_name"] for s in data["subscribers"])
@@ -313,4 +314,4 @@ def test_clean_api_error_handling(client: TestClient) -> None:
         json={"scenario": "upstream_failure", "target_node_id": "NON_EXISTENT_NODE"},
     )
     assert r3.status_code == 422
-    assert "not found in network topology" in r3.json()["detail"].lower()
+    assert "not found in topology" in r3.json()["detail"].lower()

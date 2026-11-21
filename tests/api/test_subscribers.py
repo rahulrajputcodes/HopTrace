@@ -100,12 +100,13 @@ def test_get_subscribers_with_records(client: TestClient, isolated_db: str) -> N
     sub_map = {s["id"]: s for s in data["subscribers"]}
     assert "SUB101" in sub_map
     sub101 = sub_map["SUB101"]
-    assert sub101["display_name"] == "Ramesh Patel (Kishan Kirana)"
-    assert sub101["plan"] == "Basic"
-    assert sub101["access_point_id"] == "AP1"
-    assert sub101["status"] == "active"
-    assert sub101["payment_status"] == "paid"
-    assert sub101["due_date"] == "2026-11-01"
+    demo_sub101 = next(s for s in DEMO_SUBSCRIBERS if s["id"] == "SUB101")
+    assert sub101["display_name"] == demo_sub101["display_name"]
+    assert sub101["plan"] == demo_sub101["plan"]
+    assert sub101["access_point_id"] == demo_sub101["access_point_id"]
+    assert sub101["status"] == demo_sub101["status"]
+    assert sub101["payment_status"] == demo_sub101["payment_status"]
+    assert sub101["due_date"] == demo_sub101["due_date"]
 
 
 # ── 4. Subscriber Listing with Empty Database ────────────────────────────────

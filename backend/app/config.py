@@ -32,13 +32,13 @@ class Settings(BaseSettings):
     # --- Topology provider ---
     # "simulated"  – use the built-in SimulatedTopologyProvider (no Neo4j needed)
     # "engine"     – use the EngineTopologyProvider (HopTrace graph engine)
-    topology_provider: str = "simulated"
+    topology_provider: str = "engine"
 
     # --- Dependency analysis adapter ---
     # "unavailable" – default honest behavior when engine is not connected (returns 503)
     # "simulated"   – simulated dependency mapping for demos/testbed
     # "engine"      – engine dependency adapter (when implemented)
-    dependency_adapter: str = "unavailable"
+    dependency_adapter: str = "engine"
 
     # --- Explanation provider ---
     # "unavailable" – default honest behavior when no explanation provider is connected (returns 503)

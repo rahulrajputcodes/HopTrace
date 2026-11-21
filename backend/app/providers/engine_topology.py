@@ -59,28 +59,67 @@ class EngineTopologyProvider(TopologyProvider):
             nodes_raw = getattr(topology, "nodes", None) or []
             links_raw = getattr(topology, "links", None) or []
 
-            nodes = [
-                TopologyNode(
-                    id=node.id,
-                    type=_normalize_node_type(node.type),
-                    label=node.label,
-                    status=_normalize_status(node.status),
-                )
-                for node in nodes_raw
-            ]
+            nodes = []
+            for node in nodes_raw:
+                props = getattr(node, "properties", None)
+                if not isinstance(props, dict):
+                    props = {}
 
-            links = [
-                TopologyLink(
-                    id=link.id,
-                    source=link.source,
-                    target=link.target,
-                    status=_normalize_status(link.status),
-                    latency_ms=link.latency_ms,
-                    packet_loss_pct=link.packet_loss_pct,
-                    throughput_mbps=link.throughput_mbps,
+                raw_village = props.get("village")
+                village = raw_village.lower() if isinstance(raw_village, str) else None
+                coverage_radius_m = props.get("coverage_radius_m")
+                if not isinstance(coverage_radius_m, int):
+                    coverage_radius_m = None
+                lat = props.get("lat")
+                if not isinstance(lat, (int, float)):
+                    lat = None
+                lon = props.get("lon")
+                if not isinstance(lon, (int, float)):
+                    lon = None
+
+                nodes.append(
+                    TopologyNode(
+                        id=node.id,
+                        type=_normalize_node_type(node.type),
+                        label=node.label,
+                        status=_normalize_status(node.status),
+                        lat=lat,
+                        lon=lon,
+                        village=village,
+                        coverage_radius_m=coverage_radius_m,
+                    )
                 )
-                for link in links_raw
-            ]
+
+            links = []
+            for link in links_raw:
+                lprops = getattr(link, "properties", None)
+                if not isinstance(lprops, dict):
+                    lprops = {}
+
+                distance_km = lprops.get("distance_km")
+                if not isinstance(distance_km, (int, float)):
+                    distance_km = None
+                medium = lprops.get("medium")
+                if not isinstance(medium, str):
+                    medium = None
+                frequency = lprops.get("frequency")
+                if not isinstance(frequency, str):
+                    frequency = None
+
+                links.append(
+                    TopologyLink(
+                        id=link.id,
+                        source=link.source,
+                        target=link.target,
+                        status=_normalize_status(link.status),
+                        latency_ms=link.latency_ms,
+                        packet_loss_pct=link.packet_loss_pct,
+                        throughput_mbps=link.throughput_mbps,
+                        distance_km=distance_km,
+                        medium=medium,
+                        frequency=frequency,
+                    )
+                )
 
             data_source = (
                 "measured"
