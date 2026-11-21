@@ -173,7 +173,7 @@ export default function TelemetryCharts() {
               <div key={m.key}>
                 <div className="text-xs text-slate-400 font-medium mb-1">{m.label}</div>
                 <ResponsiveContainer width="100%" height={60}>
-                  <AreaChart data={samples} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
+                  <AreaChart data={samples} margin={{ top: 2, right: 4, left: -8, bottom: 0 }}>
                     <defs>
                       <linearGradient id={`grad-${m.key}`} x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%"  stopColor={m.color} stopOpacity={0.3}/>
@@ -182,7 +182,7 @@ export default function TelemetryCharts() {
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false}/>
                     <XAxis dataKey="tick" hide/>
-                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} width={34}/>
+                    <YAxis tick={{ fontSize: 10, fill: '#64748b' }} width={42}/>
                     <Tooltip content={<CustomTooltip unit={m.unit}/>}/>
                     <Area
                       type="monotone" dataKey={m.key} name="Raw"

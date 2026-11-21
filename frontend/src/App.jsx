@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import useStore from './store/appStore';
 import { useLiveTelemetry } from './hooks/useLiveTelemetry';
 import { useApi } from './hooks/useApi';
@@ -15,6 +15,9 @@ import LabPanel from './components/LabPanel';
 import BusinessImpactPanel from './components/BusinessImpactPanel';
 import ToastStack from './components/ToastStack';
 import AlertOverlay from './components/AlertOverlay/AlertOverlay';
+// M4 walkthrough
+import Walkthrough from './components/Walkthrough/Walkthrough';
+import { hasSeenWalkthrough } from './components/Walkthrough/walkthroughPrefs';
 
 export default function App() {
   useLiveTelemetry();
@@ -24,6 +27,8 @@ export default function App() {
   const setSelectedElement = useStore(s => s.setSelectedElement);
   const dashboardMode = useStore(s => s.dashboardMode);
   const dataMode = useStore(s => s.dataMode);
+  // M4 walkthrough
+  const [walkthroughOpen, setWalkthroughOpen] = useState(() => !hasSeenWalkthrough());
 
   useEffect(() => {
     fetchAll();
@@ -140,6 +145,8 @@ export default function App() {
       {/* ── Toast Stack ───────────────────────────────────────────────── */}
       <ToastStack />
       <AlertOverlay />
+      {/* M4 walkthrough */}
+      <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
     </div>
   );
 }
