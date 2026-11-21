@@ -84,7 +84,9 @@ class NotificationHistoryResponse(BaseModel):
 
 
 class NotificationStatusResponse(BaseModel):
+    available: bool = Field(True, description="Whether notification provider is available")
     provider: str = Field(..., description="Configured notification provider")
+    reason: Optional[str] = Field(None, description="Reason if provider unavailable")
     real_send_allowlist_count: int = Field(0, description="Count of allowlisted phone numbers")
     sarvam_configured: bool = Field(False, description="Whether Sarvam API key is configured")
     twilio_configured: bool = Field(False, description="Whether Twilio credentials are configured")

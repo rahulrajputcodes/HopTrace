@@ -115,6 +115,16 @@ app.add_middleware(RateLimitMiddleware)
 # ── Routers ───────────────────────────────────────────────────────────────────
 API_PREFIX = "/api/v1"
 
+# Public (no authentication required)
+app.include_router(health_router,        prefix=API_PREFIX, tags=["health"])
+app.include_router(health_router,        tags=["health"])
+app.include_router(auth_router,          prefix=API_PREFIX, tags=["auth"])
+
+# Agent endpoints (authenticated via X-API-Key == ingest_api_key)
+app.include_router(measurements_router,  prefix=API_PREFIX, tags=["measurements"], dependencies=[Depends(require_agent_key)])
+app.include_router(probes_router,        prefix=API_PREFIX, tags=["probes"], dependencies=[Depends(require_agent_key)])
+app.include_router(agents_router,        prefix=API_PREFIX, tags=["agents"], dependencies=[Depends(require_agent_key)])
+
 # Protected endpoints (GET/HEAD: viewer | operator; Modifications: operator only)
 app.include_router(topology_router,      prefix=API_PREFIX, tags=["topology"], dependencies=[Depends(enforce_rbac)])
 app.include_router(topology_v2_router,   prefix=API_PREFIX, tags=["topology"], dependencies=[Depends(enforce_rbac)])   # risk, history, villages

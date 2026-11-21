@@ -353,6 +353,19 @@ def send_incident_notifications(
     description="Returns current notification provider configuration, allowlist count, and service readiness.",
 )
 def get_notification_status() -> NotificationStatusResponse:
+    notif_provider = get_notification_provider()
+    expl_provider = get_explanation_provider()
+
+    notif_avail = notif_provider.provider_name != "unavailable"
+    expl_avail = expl_provider.provider_name != "unavailable"
+    is_available = notif_avail and expl_avail
+
+    reason = None
+    if not notif_avail:
+        reason = "Outage notification provider is not configured. Set NOTIFICATION_PROVIDER=console or twilio."
+    elif not expl_avail:
+        reason = "Explanation provider is not configured. Set EXPLANATION_PROVIDER=simulated or sarvam."
+
     twilio_ok = bool(
         settings.twilio_account_sid.strip()
         and settings.twilio_auth_token.strip()
@@ -361,7 +374,9 @@ def get_notification_status() -> NotificationStatusResponse:
     sarvam_ok = bool(settings.sarvam_api_key.strip())
 
     return NotificationStatusResponse(
-        provider=settings.notification_provider,
+        available=is_available,
+        provider=notif_provider.provider_name,
+        reason=reason,
         real_send_allowlist_count=len(settings.real_send_allowlist_set),
         sarvam_configured=sarvam_ok,
         twilio_configured=twilio_ok,
