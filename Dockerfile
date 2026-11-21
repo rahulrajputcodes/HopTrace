@@ -1,11 +1,11 @@
 # HopTrace Unified Production Dockerfile (Single-Container PaaS)
 # Stage 1: Build static frontend assets
-FROM node:20.18.0-alpine AS frontend-builder
+FROM node:20.19.0-alpine AS frontend-builder
 
 WORKDIR /build
 
 COPY frontend/package*.json ./
-RUN npm ci
+RUN npm install --no-audit --no-fund
 
 COPY frontend/ ./
 RUN npm run build
