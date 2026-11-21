@@ -17,6 +17,13 @@ ScenarioType = Literal[
     "baseline",
     "degrade_link",
     "gradual_degradation",
+    "ramp_linear",
+    "ramp_accelerating",
+    "step_with_noise",
+    "rain_fade",
+    "diurnal_load",
+    "flapping_precursor",
+    "stable_noisy",
     "access_point_failure",
     "upstream_failure",
     "ambiguous_fault",
@@ -31,13 +38,15 @@ class LabRunRequest(BaseModel):
         ...,
         description=(
             "Scenario to run: baseline, degrade_link, gradual_degradation, "
+            "ramp_linear, ramp_accelerating, step_with_noise, rain_fade, "
+            "diurnal_load, flapping_precursor, stable_noisy, "
             "access_point_failure, upstream_failure, ambiguous_fault, cascade_fault, flapping_link"
         ),
         examples=["degrade_link"],
     )
     target_link_id: Optional[str] = Field(
         None,
-        description="Target link ID (e.g. L3). Required for degrade_link and flapping_link scenarios.",
+        description="Target link ID (e.g. L2, L3, L7). Required for degrade_link, flapping_link, and link degradation scenarios.",
         examples=["L3"],
     )
     target_node_id: Optional[str] = Field(
@@ -62,12 +71,20 @@ class LabRunRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_required_targets(self) -> Self:
-        if self.scenario in ("degrade_link", "flapping_link", "gradual_degradation") and (
+        link_scenarios = (
+            "degrade_link",
+            "flapping_link",
+            "gradual_degradation",
+            "ramp_linear",
+            "ramp_accelerating",
+            "step_with_noise",
+            "rain_fade",
+            "flapping_precursor",
+        )
+        if self.scenario in link_scenarios and (
             not self.target_link_id or not self.target_link_id.strip()
         ):
-            raise ValueError(
-                "target_link_id is required for degrade_link, flapping_link, and gradual_degradation scenarios"
-            )
+            raise ValueError(f"target_link_id is required for {self.scenario} scenario")
         if self.scenario in ("access_point_failure", "upstream_failure") and (
             not self.target_node_id or not self.target_node_id.strip()
         ):

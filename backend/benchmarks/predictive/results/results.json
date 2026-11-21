@@ -1,0 +1,1056 @@
+{
+  "metadata": {
+    "timestamp": "2026-11-03T17:04:24.525586+00:00",
+    "git_commit": "a1897d1b3484994e9ab484fc4f2360a94eacd3c9",
+    "duration_seconds": 74.22029900550842,
+    "dev_seeds": [
+      0,
+      99
+    ],
+    "test_seeds": [
+      1000,
+      1199
+    ],
+    "parameters": {
+      "D_FAIL": 0.6,
+      "D_WARN": 0.05,
+      "MIN_SLOPE": 0.002,
+      "SIM_MINUTES_PER_TICK": 2.0,
+      "MAX_HORIZON_MINUTES": 120.0,
+      "WINDOW": 10,
+      "MIN_SAMPLES": 6
+    }
+  },
+  "dev": {
+    "overall": {
+      "runs_count": 8000,
+      "failing_runs_count": 4200,
+      "healthy_runs_count": 1400,
+      "detection_rate_pct": 71.4,
+      "miss_rate_pct": 28.6,
+      "lead_time_vs_failure": {
+        "median_ticks": 19.0,
+        "iqr_ticks": 19.0,
+        "median_min": 38.0,
+        "iqr_min": 38.0
+      },
+      "lead_time_vs_static": {
+        "median_ticks": -3.0,
+        "iqr_ticks": 7.0,
+        "median_min": -6.0,
+        "iqr_min": 14.0
+      },
+      "lead_time_vs_diagnostic_engine": {
+        "median_ticks": 5.0,
+        "iqr_ticks": 5.0,
+        "median_min": 10.0,
+        "iqr_min": 10.0
+      },
+      "lead_time_vs_naive_ols": {
+        "median_ticks": 0.0,
+        "iqr_ticks": 2.0,
+        "median_min": 0.0,
+        "iqr_min": 4.0
+      },
+      "lead_time_vs_ewma_risk": {
+        "median_ticks": 16.0,
+        "iqr_ticks": 17.0,
+        "median_min": 32.0,
+        "iqr_min": 34.0
+      },
+      "false_alarms_per_link_day": 40.55,
+      "eta_mae_min": {
+        "median": 2.7,
+        "iqr": 7.0
+      },
+      "eta_rel_error": {
+        "median": 0.14,
+        "iqr": 0.3
+      },
+      "range_coverage_pct": 58.9,
+      "confidence_bands": {
+        "high": {
+          "count": 50632,
+          "mae_median_min": 2.3,
+          "mae_iqr_min": 6.2
+        },
+        "medium": {
+          "count": 12486,
+          "mae_median_min": 4.1,
+          "mae_iqr_min": 8.5
+        },
+        "low": {
+          "count": 1086,
+          "mae_median_min": 20.8,
+          "mae_iqr_min": 63.4
+        }
+      }
+    },
+    "by_scenario": {
+      "ramp_linear": {
+        "runs_count": 3600,
+        "failing_runs_count": 2000,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 19.0,
+          "iqr_ticks": 20.0,
+          "median_min": 38.0,
+          "iqr_min": 40.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 5.0,
+          "median_min": -4.0,
+          "iqr_min": 10.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 3.0,
+          "iqr_ticks": 6.0,
+          "median_min": 6.0,
+          "iqr_min": 12.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 15.0,
+          "iqr_ticks": 16.0,
+          "median_min": 30.0,
+          "iqr_min": 32.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 1.9,
+          "iqr": 3.9
+        },
+        "eta_rel_error": {
+          "median": 0.09,
+          "iqr": 0.14
+        },
+        "range_coverage_pct": 75.0,
+        "confidence_bands": {
+          "high": {
+            "count": 35311,
+            "mae_median_min": 1.6,
+            "mae_iqr_min": 3.1
+          },
+          "medium": {
+            "count": 10824,
+            "mae_median_min": 3.4,
+            "mae_iqr_min": 5.6
+          },
+          "low": {
+            "count": 662,
+            "mae_median_min": 10.55,
+            "mae_iqr_min": 12.92
+          }
+        }
+      },
+      "stable_noisy": {
+        "runs_count": 400,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 400,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 2.7,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "ramp_accelerating": {
+        "runs_count": 1200,
+        "failing_runs_count": 800,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 21.5,
+          "iqr_ticks": 5.0,
+          "median_min": 43.0,
+          "iqr_min": 10.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -2.5,
+          "iqr_ticks": 14.0,
+          "median_min": -5.0,
+          "iqr_min": 28.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 6.0,
+          "iqr_ticks": 2.0,
+          "median_min": 12.0,
+          "iqr_min": 4.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 0.0,
+          "median_min": -4.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 18.0,
+          "iqr_ticks": 7.0,
+          "median_min": 36.0,
+          "iqr_min": 14.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 11.8,
+          "iqr": 27.8
+        },
+        "eta_rel_error": {
+          "median": 0.56,
+          "iqr": 0.69
+        },
+        "range_coverage_pct": 15.7,
+        "confidence_bands": {
+          "high": {
+            "count": 15321,
+            "mae_median_min": 9.5,
+            "mae_iqr_min": 24.2
+          },
+          "medium": {
+            "count": 1620,
+            "mae_median_min": 44.05,
+            "mae_iqr_min": 32.1
+          },
+          "low": {
+            "count": 202,
+            "mae_median_min": 72.1,
+            "mae_iqr_min": 17.73
+          }
+        }
+      },
+      "step_with_noise": {
+        "runs_count": 1200,
+        "failing_runs_count": 800,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 1.0,
+        "miss_rate_pct": 99.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 1.5,
+          "iqr_ticks": 2.5,
+          "median_min": 3.0,
+          "iqr_min": 5.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -5.0,
+          "iqr_ticks": 12.0,
+          "median_min": -10.0,
+          "iqr_min": 24.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": -4.0,
+          "iqr_ticks": 2.0,
+          "median_min": -8.0,
+          "iqr_min": 4.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 4.0,
+          "median_min": -4.0,
+          "iqr_min": 8.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": -4.0,
+          "iqr_ticks": 2.0,
+          "median_min": -8.0,
+          "iqr_min": 4.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 3.8,
+          "iqr": 5.18
+        },
+        "eta_rel_error": {
+          "median": 0.96,
+          "iqr": 0.35
+        },
+        "range_coverage_pct": 100.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 18,
+            "mae_median_min": 3.8,
+            "mae_iqr_min": 5.18
+          }
+        }
+      },
+      "rain_fade": {
+        "runs_count": 600,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 600,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 92.66,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "diurnal_load": {
+        "runs_count": 400,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 400,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 0.24,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "flapping_precursor": {
+        "runs_count": 600,
+        "failing_runs_count": 600,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 32.0,
+        "miss_rate_pct": 68.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 6.0,
+          "iqr_ticks": 7.0,
+          "median_min": 12.0,
+          "iqr_min": 14.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -0.5,
+          "iqr_ticks": 5.5,
+          "median_min": -1.0,
+          "iqr_min": 11.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 4.0,
+          "iqr_ticks": 7.0,
+          "median_min": 8.0,
+          "iqr_min": 14.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -12.5,
+          "iqr_ticks": 9.0,
+          "median_min": -25.0,
+          "iqr_min": 18.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 6.0,
+          "iqr_ticks": 7.0,
+          "median_min": 12.0,
+          "iqr_min": 14.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 90.0,
+          "iqr": 28.9
+        },
+        "eta_rel_error": {
+          "median": 6.13,
+          "iqr": 12.77
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 42,
+            "mae_median_min": 80.7,
+            "mae_iqr_min": 48.1
+          },
+          "low": {
+            "count": 204,
+            "mae_median_min": 90.5,
+            "mae_iqr_min": 29.8
+          }
+        }
+      }
+    }
+  },
+  "test": {
+    "overall": {
+      "runs_count": 16000,
+      "failing_runs_count": 8400,
+      "healthy_runs_count": 2800,
+      "detection_rate_pct": 71.8,
+      "miss_rate_pct": 28.2,
+      "lead_time_vs_failure": {
+        "median_ticks": 19.0,
+        "iqr_ticks": 19.0,
+        "median_min": 38.0,
+        "iqr_min": 38.0
+      },
+      "lead_time_vs_static": {
+        "median_ticks": -3.0,
+        "iqr_ticks": 6.0,
+        "median_min": -6.0,
+        "iqr_min": 12.0
+      },
+      "lead_time_vs_diagnostic_engine": {
+        "median_ticks": 4.0,
+        "iqr_ticks": 5.0,
+        "median_min": 8.0,
+        "iqr_min": 10.0
+      },
+      "lead_time_vs_naive_ols": {
+        "median_ticks": 0.0,
+        "iqr_ticks": 2.0,
+        "median_min": 0.0,
+        "iqr_min": 4.0
+      },
+      "lead_time_vs_ewma_risk": {
+        "median_ticks": 16.0,
+        "iqr_ticks": 17.0,
+        "median_min": 32.0,
+        "iqr_min": 34.0
+      },
+      "false_alarms_per_link_day": 40.78,
+      "eta_mae_min": {
+        "median": 2.7,
+        "iqr": 7.2
+      },
+      "eta_rel_error": {
+        "median": 0.14,
+        "iqr": 0.3
+      },
+      "range_coverage_pct": 58.3,
+      "confidence_bands": {
+        "high": {
+          "count": 101039,
+          "mae_median_min": 2.2,
+          "mae_iqr_min": 6.1
+        },
+        "medium": {
+          "count": 25250,
+          "mae_median_min": 4.4,
+          "mae_iqr_min": 9.0
+        },
+        "low": {
+          "count": 2129,
+          "mae_median_min": 23.8,
+          "mae_iqr_min": 66.4
+        }
+      }
+    },
+    "by_scenario": {
+      "ramp_linear": {
+        "runs_count": 7200,
+        "failing_runs_count": 4000,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 19.0,
+          "iqr_ticks": 20.0,
+          "median_min": 38.0,
+          "iqr_min": 40.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 5.0,
+          "median_min": -4.0,
+          "iqr_min": 10.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 3.0,
+          "iqr_ticks": 6.0,
+          "median_min": 6.0,
+          "iqr_min": 12.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 15.0,
+          "iqr_ticks": 16.0,
+          "median_min": 30.0,
+          "iqr_min": 32.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 1.9,
+          "iqr": 4.0
+        },
+        "eta_rel_error": {
+          "median": 0.09,
+          "iqr": 0.15
+        },
+        "range_coverage_pct": 74.5,
+        "confidence_bands": {
+          "high": {
+            "count": 70458,
+            "mae_median_min": 1.6,
+            "mae_iqr_min": 3.1
+          },
+          "medium": {
+            "count": 21809,
+            "mae_median_min": 3.6,
+            "mae_iqr_min": 6.0
+          },
+          "low": {
+            "count": 1269,
+            "mae_median_min": 10.8,
+            "mae_iqr_min": 14.2
+          }
+        }
+      },
+      "stable_noisy": {
+        "runs_count": 800,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 800,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 3.02,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "ramp_accelerating": {
+        "runs_count": 2400,
+        "failing_runs_count": 1600,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 21.0,
+          "iqr_ticks": 5.0,
+          "median_min": 42.0,
+          "iqr_min": 10.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 13.0,
+          "median_min": -4.0,
+          "iqr_min": 26.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 6.0,
+          "iqr_ticks": 2.0,
+          "median_min": 12.0,
+          "iqr_min": 4.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 0.0,
+          "median_min": -4.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 18.0,
+          "iqr_ticks": 7.0,
+          "median_min": 36.0,
+          "iqr_min": 14.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 11.8,
+          "iqr": 28.1
+        },
+        "eta_rel_error": {
+          "median": 0.57,
+          "iqr": 0.69
+        },
+        "range_coverage_pct": 15.1,
+        "confidence_bands": {
+          "high": {
+            "count": 30575,
+            "mae_median_min": 9.4,
+            "mae_iqr_min": 24.3
+          },
+          "medium": {
+            "count": 3357,
+            "mae_median_min": 44.5,
+            "mae_iqr_min": 31.7
+          },
+          "low": {
+            "count": 329,
+            "mae_median_min": 72.3,
+            "mae_iqr_min": 15.85
+          }
+        }
+      },
+      "step_with_noise": {
+        "runs_count": 2400,
+        "failing_runs_count": 1600,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 0.6,
+        "miss_rate_pct": 99.4,
+        "lead_time_vs_failure": {
+          "median_ticks": 1.0,
+          "iqr_ticks": 0.0,
+          "median_min": 2.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": -6.0,
+          "iqr_ticks": 12.0,
+          "median_min": -12.0,
+          "iqr_min": 24.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": -4.0,
+          "iqr_ticks": 2.0,
+          "median_min": -8.0,
+          "iqr_min": 4.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -2.0,
+          "iqr_ticks": 4.0,
+          "median_min": -4.0,
+          "iqr_min": 8.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": -4.0,
+          "iqr_ticks": 2.0,
+          "median_min": -8.0,
+          "iqr_min": 4.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 0.8,
+          "iqr": 2.1
+        },
+        "eta_rel_error": {
+          "median": 0.4,
+          "iqr": 1.05
+        },
+        "range_coverage_pct": 100.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 9,
+            "mae_median_min": 0.8,
+            "mae_iqr_min": 2.1
+          }
+        }
+      },
+      "rain_fade": {
+        "runs_count": 1200,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 1200,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 92.95,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "diurnal_load": {
+        "runs_count": 800,
+        "failing_runs_count": 0,
+        "healthy_runs_count": 800,
+        "detection_rate_pct": 100.0,
+        "miss_rate_pct": 0.0,
+        "lead_time_vs_failure": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 0.0,
+          "median_min": 0.0,
+          "iqr_min": 0.0
+        },
+        "false_alarms_per_link_day": 0.3,
+        "eta_mae_min": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "eta_rel_error": {
+          "median": 0.0,
+          "iqr": 0.0
+        },
+        "range_coverage_pct": 0.0,
+        "confidence_bands": {
+          "high": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          },
+          "low": {
+            "count": 0,
+            "mae_median_min": 0.0,
+            "mae_iqr_min": 0.0
+          }
+        }
+      },
+      "flapping_precursor": {
+        "runs_count": 1200,
+        "failing_runs_count": 1200,
+        "healthy_runs_count": 0,
+        "detection_rate_pct": 35.5,
+        "miss_rate_pct": 64.5,
+        "lead_time_vs_failure": {
+          "median_ticks": 5.0,
+          "iqr_ticks": 6.0,
+          "median_min": 10.0,
+          "iqr_min": 12.0
+        },
+        "lead_time_vs_static": {
+          "median_ticks": 0.0,
+          "iqr_ticks": 3.0,
+          "median_min": 0.0,
+          "iqr_min": 6.0
+        },
+        "lead_time_vs_diagnostic_engine": {
+          "median_ticks": 3.0,
+          "iqr_ticks": 7.0,
+          "median_min": 6.0,
+          "iqr_min": 14.0
+        },
+        "lead_time_vs_naive_ols": {
+          "median_ticks": -11.0,
+          "iqr_ticks": 9.0,
+          "median_min": -22.0,
+          "iqr_min": 18.0
+        },
+        "lead_time_vs_ewma_risk": {
+          "median_ticks": 5.0,
+          "iqr_ticks": 6.0,
+          "median_min": 10.0,
+          "iqr_min": 12.0
+        },
+        "false_alarms_per_link_day": 0.0,
+        "eta_mae_min": {
+          "median": 90.2,
+          "iqr": 22.0
+        },
+        "eta_rel_error": {
+          "median": 8.99,
+          "iqr": 13.52
+        },
+        "range_coverage_pct": 1.0,
+        "confidence_bands": {
+          "high": {
+            "count": 6,
+            "mae_median_min": 89.3,
+            "mae_iqr_min": 0.0
+          },
+          "medium": {
+            "count": 84,
+            "mae_median_min": 83.25,
+            "mae_iqr_min": 29.3
+          },
+          "low": {
+            "count": 522,
+            "mae_median_min": 91.2,
+            "mae_iqr_min": 23.5
+          }
+        }
+      }
+    }
+  }
+}

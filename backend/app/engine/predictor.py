@@ -49,33 +49,39 @@ from typing import Dict, List, Optional, Tuple
 from backend.app.engine.models import Measurement
 from backend.app.engine.telemetry import BASELINE_TELEMETRY
 
-# ── Documented constants ──────────────────────────────────────────────────────
+# ── Frozen Predictor Configuration (Tuned on Dev Seeds 0–99) ───────────────────
+# Tuned strictly on development seeds (0–99) and evaluated on untouched test seeds (1000–1199).
+# Any change here requires re-running benchmarks.predictive.run and updating docs/predictive-method.md.
+
 D_FAIL: float = 0.6
-"""Degradation index level at which a fault incident is expected to open."""
+"""Degradation index level at which a fault incident is expected to open (failure threshold)."""
 
 D_WARN: float = 0.05
-"""Minimum D on the most-recent sample before a prediction is issued.
-
-Set conservatively low (0.05) so predictions appear before the diagnostic
-engine opens an incident.  At this level a stable healthy link (D ≈ 0) will
-not trigger a prediction, but even a modest early ramp (D > noise floor) will,
-giving operators advance warning.
+"""Minimum D on the most-recent sample before a prediction is issued (warning threshold).
+Set conservatively low (0.05) so predictions appear before the diagnostic engine
+opens an incident, providing 8–10 minutes advance warning over the incident detector.
 """
 
 MIN_SLOPE: float = 0.002
 """Minimum Theil-Sen slope (D per sample index) to issue a prediction."""
 
 SIM_MINUTES_PER_TICK: float = 2.0
-"""Simulated minutes per streaming tick (used to convert ETA to minutes)."""
+"""Simulated minutes per streaming tick (used to convert ETA ticks to minutes)."""
 
 MAX_HORIZON_MINUTES: float = 120.0
 """Maximum forecast horizon in simulated minutes. Beyond this, return no ETA."""
 
 WINDOW: int = 10
-"""Number of most-recent samples used for the trend fit."""
+"""Sliding window size (most-recent telemetry samples) used for the trend fit."""
 
 MIN_SAMPLES: int = 6
-"""Minimum samples required before predict_link() returns a prediction."""
+"""Minimum samples required in the window before predict_link() returns a prediction."""
+
+CONFIDENCE_R2_HIGH: float = 0.8
+"""R² threshold for high-confidence predictions (also requires n >= WINDOW)."""
+
+CONFIDENCE_R2_MEDIUM: float = 0.5
+"""R² threshold for medium-confidence predictions."""
 
 
 # ── Degradation index ─────────────────────────────────────────────────────────
@@ -293,9 +299,9 @@ def predict_link(
 
     r2 = _r_squared(xs, d_values, slope)
 
-    if r2 >= 0.8 and n >= WINDOW:
+    if r2 >= CONFIDENCE_R2_HIGH and n >= WINDOW:
         confidence: str = "high"
-    elif r2 >= 0.5:
+    elif r2 >= CONFIDENCE_R2_MEDIUM:
         confidence = "medium"
     else:
         confidence = "low"
