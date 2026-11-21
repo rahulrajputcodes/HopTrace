@@ -1,7 +1,8 @@
 # HopTrace Test Counts & Quality Gate Report
 
-Generated at: 2026-11-21 14:43 IST  
-Git Tag: `finale-start`
+Generated at: 2026-11-21 15:10 IST  
+Git Tag: `finale-start`  
+Merged HEAD: `main` (Integrated with Predictive Fault AI Benchmark Evaluation)
 
 ---
 
@@ -9,10 +10,10 @@ Git Tag: `finale-start`
 
 | Test Suite | Total Tests | Passed | Failed | Skipped | Pass Rate | Execution Time |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Backend Unit & Integration Tests (pytest)** | 271 | **269** | 0 | 2* | **100%** | 27.48s |
+| **Backend Unit, Integration & Predictive Benchmarks (pytest)** | 309 | **307** | 0 | 2* | **100%** | 22.49s |
 | **Frontend Unit Tests (node --test)** | 57 | **57** | 0 | 0 | **100%** | 0.33s |
 | **Frontend Code Quality (ESLint)** | All files | **0 errors** | 0 warnings | - | **100%** | ~15s |
-| **Combined Full-Stack Total** | **328** | **326** | **0** | **2** | **100%** | - |
+| **Combined Full-Stack Total** | **366** | **364** | **0** | **2** | **100%** | - |
 
 *\*Note: 2 skipped tests require live physical network interface hardware (tun/tap).*
 
@@ -28,7 +29,13 @@ Git Tag: `finale-start`
   - `test_agent_graceful_shutdown`: PASS (SIGINT / SIGTERM clean exit)
 - `tests/agent/test_hoptrace_agent.py`: 11 tests PASS (synthetic ping, traceroute, JSON telemetry upload)
 
-### API Tests (`tests/api/`) - 102 Tests
+### Predictive ML & Benchmark Tests (`tests/engine/test_predictor.py`, `tests/test_benchmark_smoke.py`, etc.) - 38 Tests
+- `tests/engine/test_predictor.py`: Theil-Sen estimator, robust degradation trend modeling, lead time calculation (12 tests)
+- `tests/engine/test_realistic_scenarios.py`: Stochastic noise generation, gradual degradation ramps (10 tests)
+- `tests/engine/test_replay.py`: CSV real telemetry data replay adapter (8 tests)
+- `tests/test_benchmark_smoke.py`: Benchmark runner, comparative evaluation vs EWMA and static thresholds (8 tests)
+
+### API Tests (`tests/api/`) - 104 Tests
 - `test_agents.py`: Agent registration, heartbeat, and offline TTL tracking (5 tests)
 - `test_auth.py`: Token generation, validation, and rejection (6 tests)
 - `test_explanations.py`: Sarvam LLM, Bulbul TTS audio, fallback simulation (8 tests)
@@ -38,7 +45,7 @@ Git Tag: `finale-start`
 - `test_security.py`: Rate limiting, XSS prevention, CORS policy, header hardening (8 tests)
 - `test_subscribers.py`: Subscriber CRUD, payment status, QR payload (9 tests)
 - `test_telemetry_ws_live.py`: WebSocket broadcast, live streaming, reconnection (12 tests)
-- `test_topology.py` & `test_topology_v2.py`: GIS endpoints, geo-coordinates, SLA metrics (18 tests)
+- `test_topology.py` & `test_topology_v2.py`: GIS endpoints, geo-coordinates, predictive risk endpoints, SLA metrics (20 tests)
 
 ### Engine & Analytics Tests (`tests/engine/`) - 152 Tests
 - `test_baselines_learned.py`: EWMA baselines persistence in SQLite across server restarts (7 tests)
