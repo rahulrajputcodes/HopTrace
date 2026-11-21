@@ -7,11 +7,16 @@
  * tryPlayVoice — optional audio playback; returns false silently on any failure
  */
 
+// ---------------------------------------------------------------------------
+// publicApi
+// ---------------------------------------------------------------------------
+
 const BASE = '/api/v1';
 
 /**
  * Lightweight public API fetch — NO auth headers.
- * Throws an Error on non-2xx responses.
+ * Throws an Error on non-2xx responses so callers can distinguish
+ * fetch failures from successful "empty" responses.
  *
  * @param {string} path   e.g. '/public/villages?lang=en'
  * @param {RequestInit} [opts]
@@ -28,6 +33,10 @@ export async function publicApi(path, opts = {}) {
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// statusConfig
+// ---------------------------------------------------------------------------
 
 const STATUS_MAP = {
   up: {
@@ -60,6 +69,7 @@ const STATUS_MAP = {
   },
 };
 
+/** Fallback config for unrecognised status values */
 const FALLBACK_CONFIG = {
   label: 'unknown',
   colorClass: 'text-slate-500',
@@ -78,6 +88,10 @@ const FALLBACK_CONFIG = {
 export function statusConfig(status) {
   return STATUS_MAP[status] ?? FALLBACK_CONFIG;
 }
+
+// ---------------------------------------------------------------------------
+// formatUpdatedAt
+// ---------------------------------------------------------------------------
 
 /**
  * Converts an ISO timestamp to a human-readable relative string.
@@ -111,6 +125,10 @@ export function formatUpdatedAt(iso, lang = 'en') {
   return lang === 'hi' ? `${days}d पहले` : `${days}d ago`;
 }
 
+// ---------------------------------------------------------------------------
+// tryPlayVoice
+// ---------------------------------------------------------------------------
+
 /**
  * Attempts to fetch and play an audio update from the voice endpoint.
  * Returns false silently on any failure (503, network error, decode error).
@@ -118,7 +136,7 @@ export function formatUpdatedAt(iso, lang = 'en') {
  *
  * @param {string} villageId
  * @param {'en'|'hi'} lang
- * @returns {Promise<boolean>}
+ * @returns {Promise<boolean>}  true if playback started, false otherwise
  */
 export async function tryPlayVoice(villageId, lang) {
   try {
@@ -127,12 +145,17 @@ export async function tryPlayVoice(villageId, lang) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ village_id: villageId, lang }),
     });
+    // Treat anything non-2xx (including 503) as "not available"
     if (!res.ok) return false;
+
     const data = await res.json().catch(() => null);
     if (!data || !data.audio_base64 || !data.mime) return false;
+
+    // Decode base64 → ArrayBuffer → AudioBuffer → play
     const binary = atob(data.audio_base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
     const ctx = new AudioContext();
     const audioBuffer = await ctx.decodeAudioData(bytes.buffer);
     const source = ctx.createBufferSource();
