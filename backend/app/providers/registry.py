@@ -14,6 +14,12 @@ from app.providers.dependencies import (
     SimulatedDependencyAdapter,
     UnavailableDependencyAdapter,
 )
+from app.providers.notifications import (
+    NotificationProvider,
+    UnavailableNotificationProvider,
+    ConsoleNotificationProvider,
+    TwilioNotificationProvider,
+)
 from app.providers.explanations import (
     ExplanationProvider,
     ExplanationProviderUnavailableError,
@@ -101,4 +107,40 @@ def get_explanation_provider() -> ExplanationProvider:
     raise ValueError(
         f"Unknown EXPLANATION_PROVIDER={name!r}. "
         "Valid values: 'unavailable', 'sarvam', 'simulated'."
+    )
+
+_console_provider_instance = None
+
+
+def get_notification_provider() -> NotificationProvider:
+    """
+    Factory used as a FastAPI dependency for outage notifications.
+
+    Supported NOTIFICATION_PROVIDER values:
+      unavailable - Explicitly unavailable provider (raises NotificationProviderUnavailableError)
+      console     - In-memory logging provider for demos and tests
+      twilio      - Twilio SMS and WhatsApp provider (requires TWILIO_* credentials)
+    """
+    global _console_provider_instance
+    name = settings.notification_provider.lower().strip()
+
+    if name == "unavailable":
+        return UnavailableNotificationProvider()
+
+    if name == "console":
+        if _console_provider_instance is None:
+            _console_provider_instance = ConsoleNotificationProvider()
+        return _console_provider_instance
+
+    if name == "twilio":
+        return TwilioNotificationProvider(
+            account_sid=settings.twilio_account_sid,
+            auth_token=settings.twilio_auth_token,
+            from_number=settings.twilio_from_number,
+            whatsapp_from_number=settings.twilio_whatsapp_from_number,
+        )
+
+    raise ValueError(
+        f"Unknown NOTIFICATION_PROVIDER={name!r}. "
+        "Valid values: 'unavailable', 'console', 'twilio'."
     )

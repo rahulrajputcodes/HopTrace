@@ -145,6 +145,7 @@ export function buildMapModel({
               throughput_mbps: live.throughput_mbps,
               connectivity_ok: live.connectivity_ok,
               predicted_eta_minutes: live.predicted_eta_minutes,
+              data_source: live.data_source || 'simulated',
             }
           : null,
       });

@@ -16,6 +16,7 @@ import logging
 import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.config import settings
 from app.db.connection import get_db
 from app.db.repository import create_incident, get_incident
 from app.engine.facade import get_engine, get_incident_details, get_topology, run_scenario
@@ -277,6 +278,36 @@ def run_lab_scenario(
             created_at=incident_details.created_at,
             ai_report=ai_report_schema,
         )
+
+        # 10. Automatically dispatch outage notifications if notification provider is enabled
+        if incident_details.status == "open" and affected_subs:
+            try:
+                if settings.notification_provider.lower().strip() != "unavailable":
+                    from app.db.repository import list_subscribers
+                    from app.providers.registry import get_notification_provider, get_explanation_provider
+                    from app.services.outage_notifier import dispatch_outage_notifications
+
+                    notif_prov = get_notification_provider()
+                    expl_prov = get_explanation_provider()
+                    if notif_prov.provider_name != "unavailable" and expl_prov.provider_name != "unavailable":
+                        all_subs = list_subscribers(db)
+                        aff_ids = {s.id for s in affected_subs}
+                        target_subs = [s for s in all_subs if s.get("id") in aff_ids]
+                        if target_subs:
+                            inc_dict = (
+                                incident_details.model_dump()
+                                if hasattr(incident_details, "model_dump")
+                                else dict(incident_details)
+                            )
+                            dispatch_outage_notifications(
+                                incident=inc_dict,
+                                subscribers=target_subs,
+                                notification_provider=notif_prov,
+                                explanation_provider=expl_prov,
+                                channel="sms",
+                            )
+            except Exception as exc:
+                logger.warning("Automatic outage notification dispatch failed: %s", exc)
 
     return LabRunResponse(
         run_id=sim_response.run_id,

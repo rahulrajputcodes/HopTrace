@@ -12,6 +12,10 @@ test('villageStatusColor: maps all backend status strings', () => {
   assert.equal(villageStatusColor('invalid'), '#64748b');
 });
 
+test('telemetryLabel: returns Live telemetry for live', () => {
+  assert.equal(telemetryLabel('live'), 'Live telemetry');
+});
+
 test('telemetryLabel: returns Simulated telemetry for simulated', () => {
   assert.equal(telemetryLabel('simulated'), 'Simulated telemetry');
 });

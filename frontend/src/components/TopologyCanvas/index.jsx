@@ -149,7 +149,7 @@ export default function TopologyCanvas() {
         style: { stroke: color, strokeWidth, strokeDasharray: isDown ? '6 3' : undefined },
         animated: !isDown && risk < 60,
         markerEnd: { type: MarkerType.ArrowClosed, color },
-        data: { ...link, risk_score: risk },
+        data: { ...link, risk_score: risk, data_source: live?.data_source || 'simulated' },
       };
     });
   }, [topology.links, riskSnapshot, liveMeasurements, suspectedId]);
@@ -187,8 +187,9 @@ export default function TopologyCanvas() {
       </div>
 
       {/* Source badge */}
-      <div className="absolute top-2 right-12 z-10 px-2 py-1 bg-[#0a1628]/90 rounded-lg border border-slate-700 text-[10px] text-slate-400 pointer-events-none">
-        {topology.nodes?.length ?? 0} nodes · {topology.links?.length ?? 0} links · {topology.data_source || 'live'}
+      <div className="absolute top-2 right-12 z-10 px-2 py-1 bg-[#0a1628]/90 rounded-lg border border-slate-700 text-[10px] text-slate-400 pointer-events-none flex items-center gap-1.5">
+        <span className={`w-1.5 h-1.5 rounded-full ${(liveMeasurements || []).some(m => m.data_source === 'live') || topology.data_source === 'live' ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+        <span>{topology.nodes?.length ?? 0} nodes · {topology.links?.length ?? 0} links · {(liveMeasurements || []).some(m => m.data_source === 'live') || topology.data_source === 'live' ? 'live' : (topology.data_source || 'simulated')}</span>
       </div>
 
       <ReactFlow

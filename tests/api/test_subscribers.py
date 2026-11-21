@@ -126,10 +126,13 @@ def test_subscriber_field_names_and_types(client: TestClient, isolated_db: str) 
         "id": str,
         "display_name": str,
         "plan": str,
+        "plan_price": (int, float),
         "access_point_id": str,
         "status": str,
         "payment_status": str,
         "due_date": str,
+        "phone": (str, type(None)),
+        "preferred_language": (str, type(None)),
     }
 
     response = client.get("/api/v1/subscribers")

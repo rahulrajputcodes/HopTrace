@@ -4,6 +4,7 @@ import { useLiveTelemetry } from './hooks/useLiveTelemetry';
 import { useApi } from './hooks/useApi';
 
 import TopBar from './components/TopBar';
+import NetworkStatusBanner from './components/NetworkStatusBanner';
 import KPIRibbon from './components/KPIRibbon';
 import NetworkView from './components/NetworkView';
 import IncidentPanel from './components/IncidentPanel';
@@ -11,8 +12,10 @@ import AIExplanationCard from './components/AIExplanationCard';
 import TelemetryCharts from './components/TelemetryCharts';
 import SubscriberOps from './components/SubscriberOps';
 import LabPanel from './components/LabPanel';
+import BusinessImpactPanel from './components/BusinessImpactPanel';
 import SarvamKeyModal from './components/SarvamKeyModal';
 import ToastStack from './components/ToastStack';
+import AlertOverlay from './components/AlertOverlay/AlertOverlay';
 
 export default function App() {
   useLiveTelemetry();
@@ -21,6 +24,7 @@ export default function App() {
   const [sarvamOpen, setSarvamOpen] = useState(false);
   const selectedElement = useStore(s => s.selectedElement);
   const setSelectedElement = useStore(s => s.setSelectedElement);
+  const dashboardMode = useStore(s => s.dashboardMode);
 
   useEffect(() => {
     fetchAll();
@@ -32,6 +36,9 @@ export default function App() {
       {/* ── Top Bar ──────────────────────────────────────────────────── */}
       <TopBar onOpenSarvam={() => setSarvamOpen(true)} onRefresh={fetchAll} />
 
+      {/* ── Network Health Single Source Status Banner ──────────────── */}
+      <NetworkStatusBanner />
+
       {/* ── KPI Ribbon ───────────────────────────────────────────────── */}
       <KPIRibbon />
 
@@ -42,7 +49,7 @@ export default function App() {
         <section className="col-span-12 lg:col-span-8 flex flex-col gap-2.5 min-h-0">
           <div
             className="flex-1 relative"
-            style={{ minHeight: 480 }}
+            style={{ height: '60vh', minHeight: 520 }}
           >
             {/* Card wrapper */}
             <div className="absolute inset-0 bg-[#0a1628] border border-slate-800 rounded-xl overflow-hidden flex flex-col">
@@ -61,11 +68,21 @@ export default function App() {
           <LabPanel />
         </section>
 
-        {/* Right panel: Incident + AI + Charts */}
+        {/* Right panel: Incident + AI + Charts (NOC) / Business Impact + Incident + AI (Business) */}
         <section className="col-span-12 lg:col-span-4 flex flex-col gap-2.5 min-h-0">
-          <IncidentPanel />
-          <AIExplanationCard />
-          <TelemetryCharts />
+          {dashboardMode === 'business' ? (
+            <>
+              <BusinessImpactPanel />
+              <IncidentPanel />
+              <AIExplanationCard />
+            </>
+          ) : (
+            <>
+              <IncidentPanel />
+              <AIExplanationCard />
+              <TelemetryCharts />
+            </>
+          )}
         </section>
 
         {/* Full-width: Subscriber Ops */}
@@ -119,6 +136,7 @@ export default function App() {
 
       {/* ── Toast Stack ───────────────────────────────────────────────── */}
       <ToastStack />
+      <AlertOverlay />
     </div>
   );
 }

@@ -8,6 +8,7 @@ connected clients. Batch includes:
   - Active incident (if any) from the engine
   - Cascade/flapping detection flags
   - Tick counter
+  - Data source flag ("live" or "simulated")
 """
 
 from __future__ import annotations
@@ -91,12 +92,20 @@ async def _streaming_loop() -> None:
                 injected_measurements = None
                 if latest and latest.status == "open" and latest.suspected_component_id:
                     run = None
-                    if latest.run_id and latest.run_id in engine._runs:
-                        run = engine._runs[latest.run_id]
+                    if latest.run_id:
+                        run = engine.get_run_measurements(latest.run_id)
                     if run:
                         injected_measurements = run.measurements
 
-                active_measurements = injected_measurements or measurements
+                active_measurements = list(injected_measurements or measurements)
+
+                # Overlay live ingested measurements (if any), replacing simulated values for those links
+                live_meas = engine.get_live_measurements()
+                if live_meas:
+                    active_map = {m.component_id: m for m in active_measurements}
+                    for comp_id, lm in live_meas.items():
+                        active_map[comp_id] = lm
+                    active_measurements = list(active_map.values())
 
             # Push into time-series store
             ts_store.push_measurements_batch(active_measurements, tick=tick)
@@ -162,10 +171,13 @@ async def _streaming_loop() -> None:
                     "created_at": latest.created_at,
                 }
 
+            has_live = any(getattr(m, "data_source", "simulated") == "live" for m in active_measurements)
+
             batch = {
                 "type": "telemetry_batch",
                 "tick": tick,
                 "timestamp_utc": now,
+                "data_source": "live" if has_live else "simulated",
                 "measurements": link_payloads,
                 "links": link_payloads,
                 "active_incident": incident_payload,
@@ -222,11 +234,13 @@ async def telemetry_websocket(websocket: WebSocket) -> None:
                 "confidence_score": latest.confidence_score,
                 "created_at": latest.created_at,
             }
+        has_live = any(getattr(m, "data_source", "simulated") == "live" for m in engine.get_live_measurements().values())
         await websocket.send_text(
             json.dumps(
                 {
                     "type": "connected",
                     "message": "HopTrace v2 live telemetry stream connected.",
+                    "data_source": "live" if has_live else "simulated",
                     "risk_snapshot": risk_snapshot,
                     "active_incident": incident_payload,
                 },

@@ -312,9 +312,104 @@ class DiagnosticEngine:
             created_at=datetime.now(timezone.utc).isoformat(),
         )
 
+    @staticmethod
+    def _derive_branches(topology: Optional[NetworkTopology]) -> List[set[str]]:
+        """Derives independent distribution branches from a NetworkTopology.
+
+        Computes branches as the sets of interior links downstream of each
+        child of the gateway link.
+        """
+        if not topology:
+            return []
+
+        links = getattr(topology, "links", None) or []
+        nodes = getattr(topology, "nodes", None) or []
+        if not links:
+            return []
+
+        def _get_val(obj: Any, key: str) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(key)
+            return getattr(obj, key, None)
+
+        # 1. Identify the gateway link
+        gw_node_ids = {
+            _get_val(n, "id")
+            for n in nodes
+            if str(_get_val(n, "type") or "").lower() in ("gateway", "fiber_gateway")
+            or str(_get_val(n, "id") or "").upper().startswith("GW")
+        }
+        gw_node_ids.discard(None)
+
+        gw_link = None
+        if gw_node_ids:
+            gw_link = next((l for l in links if _get_val(l, "source") in gw_node_ids), None)
+
+        if gw_link is None:
+            gw_link = next((l for l in links if _get_val(l, "id") == GATEWAY_LINK_ID), None)
+
+        if gw_link is None:
+            all_targets = {_get_val(l, "target") for l in links}
+            root_sources = [
+                _get_val(l, "source")
+                for l in links
+                if _get_val(l, "source") and _get_val(l, "source") not in all_targets
+            ]
+            if root_sources:
+                gw_link = next((l for l in links if _get_val(l, "source") == root_sources[0]), None)
+
+        if gw_link is None:
+            return []
+
+        gw_link_id = _get_val(gw_link, "id")
+        gw_target = _get_val(gw_link, "target")
+        if not gw_target:
+            return []
+
+        # 2. Child links originating from the gateway link's target node
+        child_links = [
+            l
+            for l in links
+            if _get_val(l, "source") == gw_target and _get_val(l, "id") != gw_link_id
+        ]
+        if not child_links:
+            return []
+
+        # 3. Build adjacency list of outgoing links
+        outgoing_by_node: Dict[str, List[Any]] = {}
+        for l in links:
+            src = _get_val(l, "source")
+            if src:
+                outgoing_by_node.setdefault(src, []).append(l)
+
+        # 4. Traverse downstream for each child link to form independent branches
+        branches: List[set[str]] = []
+        for cl in child_links:
+            branch_set: set[str] = set()
+            visited: set[str] = set()
+            queue = [cl]
+            while queue:
+                curr = queue.pop(0)
+                curr_id = _get_val(curr, "id")
+                if not curr_id or curr_id in visited:
+                    continue
+                visited.add(curr_id)
+                if curr_id != gw_link_id:
+                    branch_set.add(curr_id)
+                curr_target = _get_val(curr, "target")
+                for nxt in outgoing_by_node.get(curr_target, []):
+                    nxt_id = _get_val(nxt, "id")
+                    if nxt_id and nxt_id not in visited and nxt_id != gw_link_id:
+                        queue.append(nxt)
+            if branch_set:
+                branches.append(branch_set)
+
+        return branches
+
     def _detect_cascade_fault(
         self,
         reports: List[LinkAnomalyReport],
+        topology: Optional[NetworkTopology] = None,
         threshold: float = 0.10,
         min_links: int = 2,
     ) -> bool:
@@ -325,14 +420,19 @@ class DiagnosticEngine:
         # True cascade: at least 2 links are degraded, at least 2 are in separate branches
         # (i.e., not parent-child in the same path)
         degraded_ids = {r.link_id for r in degraded}
-        # Rampur branch: L2, L3, L4 (sequential)
-        # Bhatpur branch: L6, L7, L8, L9, L10
-        # Daulatpur branch: L11, L12, L13, L14
-        branches = [
-            {"L2", "L3", "L4"},
-            {"L6", "L7", "L8", "L9", "L10"},
-            {"L11", "L12", "L13", "L14"},
-        ]
+
+        branches = self._derive_branches(topology) if topology is not None else None
+        if not branches:
+            # Fallback to the current hard-coded sets only when no topology is given (or empty/invalid)
+            # Rampur branch: L2, L3, L4 (sequential)
+            # Bhatpur branch: L6, L7, L8, L9, L10
+            # Daulatpur branch: L11, L12, L13, L14
+            branches = [
+                {"L2", "L3", "L4"},
+                {"L6", "L7", "L8", "L9", "L10"},
+                {"L11", "L12", "L13", "L14"},
+            ]
+
         branches_affected = sum(1 for b in branches if b & degraded_ids)
         return branches_affected >= 2 or len(degraded) >= 3
 
@@ -443,7 +543,9 @@ class DiagnosticEngine:
             )
 
         # ── 5. Cascade detection ──────────────────────────────────────────────
-        is_cascade = self._detect_cascade_fault(reports)
+        is_cascade = self._detect_cascade_fault(
+            reports, topology=topology, threshold=self.detection_threshold
+        )
         degraded_reports = [r for r in reports if r.score >= self.detection_threshold and not r.is_unmonitored]
 
         if is_cascade and len(degraded_reports) >= 2:
@@ -531,3 +633,9 @@ def diagnose(
     """Convenience function running the explainable diagnostic engine."""
     engine = DiagnosticEngine(baselines=baselines)
     return engine.diagnose(measurements=measurements, topology=topology, run_id=run_id)
+
+
+def derive_topology_branches(topology: Optional[NetworkTopology]) -> List[set[str]]:
+    """Convenience helper to compute distribution branches from a network topology."""
+    return DiagnosticEngine._derive_branches(topology)
+

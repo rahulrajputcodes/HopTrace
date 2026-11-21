@@ -48,7 +48,7 @@ class TopologyLink(BaseModel):
 
 # ── Top-level response ───────────────────────────────────────────────────────
 
-DataSource = Literal["simulated", "measured"]
+DataSource = Literal["simulated", "measured", "live"]
 
 
 class TopologyResponse(BaseModel):

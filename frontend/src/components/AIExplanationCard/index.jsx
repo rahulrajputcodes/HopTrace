@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useRef } from 'react';
 import useStore from '../../store/appStore';
 import { useApi } from '../../hooks/useApi';
 
@@ -97,7 +97,9 @@ export default function AIExplanationCard() {
         addToast(`Playing Sarvam voice (${speaker})`, 'success');
         return;
       }
-    } catch (_) {}
+    } catch (err) {
+    console.warn('Sarvam audio playback fallback:', err);
+  }
     fallback(text);
   };
 
@@ -113,7 +115,7 @@ export default function AIExplanationCard() {
             <button
               key={l.code}
               onClick={() => handleLanguageChange(l.code)}
-              className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors ${
+              className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
                 sarvamLanguage === l.code ? 'bg-purple-600 text-white' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -134,26 +136,26 @@ export default function AIExplanationCard() {
           <>
             {aiReport.executive_summary && (
               <div>
-                <div className="text-[10px] text-purple-400 font-medium uppercase mb-1">Executive Summary</div>
+                <div className="text-xs text-purple-400 font-medium uppercase mb-1">Executive Summary</div>
                 <p className="text-slate-200 text-sm leading-relaxed">{aiReport.executive_summary}</p>
               </div>
             )}
             {aiReport.technical_diagnosis && (
               <div>
-                <div className="text-[10px] text-blue-400 font-medium uppercase mb-1">Technical Diagnosis</div>
+                <div className="text-xs text-blue-400 font-medium uppercase mb-1">Technical Diagnosis</div>
                 <pre className="text-slate-300 text-xs font-mono bg-slate-900 p-3 rounded-lg whitespace-pre-wrap leading-relaxed">{aiReport.technical_diagnosis}</pre>
               </div>
             )}
             {aiReport.field_operator_steps && (
               <div>
-                <div className="text-[10px] text-amber-400 font-medium uppercase mb-1">Field Operator Steps</div>
+                <div className="text-xs text-amber-400 font-medium uppercase mb-1">Field Operator Steps</div>
                 <ol className="space-y-1.5">
                   {(Array.isArray(aiReport.field_operator_steps)
                     ? aiReport.field_operator_steps
                     : [aiReport.field_operator_steps]
                   ).map((step, i) => (
                     <li key={i} className="flex gap-2 text-xs text-slate-300">
-                      <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900 text-amber-300 flex items-center justify-center text-[10px] font-bold">
+                      <span className="shrink-0 w-5 h-5 rounded-full bg-amber-900 text-amber-300 flex items-center justify-center text-xs font-bold">
                         {i + 1}
                       </span>
                       <span className="leading-relaxed">{step}</span>
@@ -164,9 +166,9 @@ export default function AIExplanationCard() {
             )}
             {aiReport.subscriber_impact_brief && (
               <div>
-                <div className="text-[10px] text-emerald-400 font-medium uppercase mb-1">Subscriber Impact Brief</div>
+                <div className="text-xs text-emerald-400 font-medium uppercase mb-1">Subscriber Impact Brief</div>
                 <div className="bg-emerald-950/30 border border-emerald-800/40 rounded-xl p-3">
-                  <div className="text-[10px] text-emerald-600 mb-1">📱 WhatsApp-style brief</div>
+                  <div className="text-xs text-emerald-600 mb-1">📱 WhatsApp-style brief</div>
                   <p className="text-emerald-100 text-xs leading-relaxed">{aiReport.subscriber_impact_brief}</p>
                 </div>
               </div>
@@ -207,7 +209,7 @@ export default function AIExplanationCard() {
             {isPlayingAudio ? '⏹ Stop' : '▶ Voice Brief'}
           </button>
           <WaveformBars playing={isPlayingAudio}/>
-          <span className="text-[10px] text-slate-500 ml-auto">
+          <span className="text-xs text-slate-500 ml-auto">
             {LANG_OPTIONS.find(l => l.code === sarvamLanguage)?.speaker || 'meera'} · Sarvam Bulbul
           </span>
         </div>

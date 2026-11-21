@@ -1,0 +1,18 @@
+{
+  "name": "hoptrace-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HopTrace - ISP Network Fault Localisation, Physical Geography & Subscriber Operations",
+  "scripts": {
+    "dev": "node -e \"const { spawn } = require('child_process'); spawn('python', ['-m', 'uvicorn', 'app.main:app', '--reload', '--port', '8000', '--app-dir', 'backend'], { stdio: 'inherit', shell: true }); spawn('npm', ['run', 'dev'], { cwd: 'frontend', stdio: 'inherit', shell: true });\"",
+    "dev:backend": "python -m uvicorn app.main:app --reload --port 8000 --app-dir backend",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "python -m pytest tests -v",
+    "test:frontend": "node --test frontend/src/components/VillageMap/*.test.js frontend/src/components/NetworkView/viewPref.test.js",
+    "lint": "npm --prefix frontend run lint",
+    "build": "npm --prefix frontend run build",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  }
+}

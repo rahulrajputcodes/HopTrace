@@ -31,6 +31,12 @@ import {
   NODE_Z_INDEX,
 } from './icons';
 import { getStoredLayers, setStoredLayers, LABEL_MIN_ZOOM } from './layerPrefs';
+import {
+  getStoredPopoverPref,
+  setStoredPopoverPref,
+  STORAGE_KEY_MAP_LEGEND,
+  STORAGE_KEY_MAP_VILLAGES,
+} from './popoverPrefs';
 import Legend from './Legend';
 import MapPanes from './MapPanes';
 import LayerToggles from './LayerToggles';
@@ -134,7 +140,29 @@ export default function VillageMap() {
   const [isOffline, setIsOffline] = useState(false);
   const [layers, setLayers] = useState(() => getStoredLayers());
   const [currentZoom, setCurrentZoom] = useState(12);
+  const [legendOpen, setLegendOpen] = useState(() =>
+    getStoredPopoverPref(STORAGE_KEY_MAP_LEGEND, false)
+  );
+  const [villagesOpen, setVillagesOpen] = useState(() =>
+    getStoredPopoverPref(STORAGE_KEY_MAP_VILLAGES, false)
+  );
   const tileLayerRef = useRef(null);
+
+  const toggleLegend = useCallback(() => {
+    setLegendOpen((prev) => {
+      const next = !prev;
+      setStoredPopoverPref(STORAGE_KEY_MAP_LEGEND, next);
+      return next;
+    });
+  }, []);
+
+  const toggleVillages = useCallback(() => {
+    setVillagesOpen((prev) => {
+      const next = !prev;
+      setStoredPopoverPref(STORAGE_KEY_MAP_VILLAGES, next);
+      return next;
+    });
+  }, []);
 
   const handleLayersChange = useCallback((newLayers) => {
     setLayers(newLayers);
@@ -161,7 +189,7 @@ export default function VillageMap() {
 
   if (dataSource === 'loading') {
     return (
-      <div className="relative isolate w-full h-full min-h-[480px] bg-[#050d1a] flex flex-col items-center justify-center text-slate-400">
+      <div className="relative isolate w-full h-full min-h-[520px] bg-[#050d1a] flex flex-col items-center justify-center text-slate-400">
         <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mb-3" />
         <div className="text-sm font-medium">Loading topology…</div>
       </div>
@@ -170,7 +198,7 @@ export default function VillageMap() {
 
   if (!bounds) {
     return (
-      <div className="relative isolate w-full h-full min-h-[480px] bg-[#050d1a] flex flex-col items-center justify-center text-slate-400 p-6 text-center">
+      <div className="relative isolate w-full h-full min-h-[520px] bg-[#050d1a] flex flex-col items-center justify-center text-slate-400 p-6 text-center">
         <div className="text-3xl mb-2">🗺️</div>
         <div className="text-sm font-medium text-slate-200 mb-1">
           No geographic data from the backend
@@ -187,21 +215,23 @@ export default function VillageMap() {
     (bounds[0][1] + bounds[1][1]) / 2,
   ];
 
-  const label = telemetryLabel(dataSource);
+  const isAnyLive = dataSource === 'live' || model.links.some(l => l.live?.data_source === 'live');
+  const label = isAnyLive ? 'Live telemetry' : telemetryLabel(dataSource);
+  const activeSource = isAnyLive ? 'live' : dataSource;
 
   return (
-    <div className="relative isolate w-full h-full min-h-[480px] bg-[#050d1a] overflow-hidden select-none">
+    <div className="relative isolate w-full h-full min-h-[520px] bg-[#050d1a] overflow-hidden select-none">
       {/* Honesty Chip */}
       <div
         role="note"
         aria-label="Telemetry data source"
-        className="absolute top-3 right-3 z-[1000] bg-slate-900/90 backdrop-blur-sm border border-slate-700/70 text-slate-300 text-[11px] sm:text-xs px-2.5 py-1.5 rounded shadow pointer-events-none flex items-center gap-2 max-w-[calc(100%-1rem)] sm:max-w-max leading-tight"
+        className="absolute top-3 right-3 z-[1000] bg-slate-900/90 backdrop-blur-sm border border-slate-700/70 text-slate-300 text-xs px-2.5 py-1.5 rounded shadow pointer-events-none flex items-center gap-2 max-w-[calc(100%-1rem)] sm:max-w-max leading-tight"
       >
-        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+        <span className={`w-2 h-2 rounded-full shrink-0 ${isAnyLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
         <span>
           {label
-            ? `${label} · illustrative placement · source: ${dataSource}`
-            : `illustrative placement · source: ${dataSource}`}
+            ? `${label} · illustrative placement · source: ${activeSource}`
+            : `illustrative placement · source: ${activeSource}`}
         </span>
       </div>
 
@@ -223,8 +253,44 @@ export default function VillageMap() {
         </div>
       )}
 
-      {/* Map Legend */}
-      <Legend />
+      {/* Corner Toolbar Buttons: Legend & Villages (collapsed by default, remembering choice) */}
+      <div
+        className="absolute bottom-3 left-3 z-[1000] flex items-center gap-2"
+        onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={toggleLegend}
+          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border shadow-md flex items-center gap-1.5 transition-colors cursor-pointer ${
+            legendOpen
+              ? 'bg-sky-600/90 text-white border-sky-400'
+              : 'bg-[#0b172a]/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
+          }`}
+          aria-expanded={legendOpen}
+          aria-label="Toggle map legend"
+        >
+          <span>🗺️</span>
+          <span>Legend</span>
+        </button>
+        <button
+          type="button"
+          onClick={toggleVillages}
+          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border shadow-md flex items-center gap-1.5 transition-colors cursor-pointer ${
+            villagesOpen
+              ? 'bg-sky-600/90 text-white border-sky-400'
+              : 'bg-[#0b172a]/90 text-slate-300 hover:text-white border-slate-700/80 hover:bg-slate-800'
+          }`}
+          aria-expanded={villagesOpen}
+          aria-label="Toggle village summary"
+        >
+          <span>🏘️</span>
+          <span>Villages</span>
+        </button>
+      </div>
+
+      {/* Map Legend Popover */}
+      {legendOpen && <Legend onClose={toggleLegend} />}
 
       <MapContainer
         center={defaultCenter}
@@ -236,7 +302,11 @@ export default function VillageMap() {
       >
         <MapPanes />
         <ZoomTracker onZoomChange={handleZoomChange} />
-        <VillageSummary />
+        <VillageSummary
+          isOpen={villagesOpen}
+          onClose={toggleVillages}
+          legendOpen={legendOpen}
+        />
 
         <TileLayer
           ref={tileLayerRef}
@@ -330,6 +400,7 @@ export default function VillageMap() {
                         medium: link.medium,
                         frequency: link.frequency,
                         status: link.isDown ? 'down' : 'up',
+                        data_source: link.live?.data_source || 'simulated',
                       },
                     });
                   },
@@ -339,28 +410,39 @@ export default function VillageMap() {
                   <div className="space-y-1.5 text-xs text-slate-200">
                     <div className="flex items-center justify-between border-b border-slate-700/60 pb-1">
                       <span className="font-semibold text-white">Link: {link.id}</span>
-                      <span
-                        className="px-1.5 py-0.5 rounded text-[10px] font-medium"
-                        style={{
-                          backgroundColor: `${riskColor(link.risk_score)}22`,
-                          color: riskColor(link.risk_score),
-                        }}
-                      >
-                        Risk {link.risk_score}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-xs font-semibold ${
+                            link.live?.data_source === 'live'
+                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-700/60'
+                              : 'bg-slate-800 text-slate-400 border border-slate-700'
+                          }`}
+                        >
+                          {link.live?.data_source === 'live' ? '● Live' : '○ Simulated'}
+                        </span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-xs font-medium"
+                          style={{
+                            backgroundColor: `${riskColor(link.risk_score)}22`,
+                            color: riskColor(link.risk_score),
+                          }}
+                        >
+                          Risk {link.risk_score}
+                        </span>
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-400">
+                    <div className="text-xs text-slate-400">
                       {link.source} &rarr; {link.target}
                     </div>
 
                     {link.distance_km !== undefined && link.distance_km !== null && (
-                      <div className="flex justify-between text-[11px]">
+                      <div className="flex justify-between text-xs">
                         <span className="text-slate-400">Distance:</span>
                         <span className="font-mono">{link.distance_km} km</span>
                       </div>
                     )}
                     {link.medium && (
-                      <div className="flex justify-between text-[11px]">
+                      <div className="flex justify-between text-xs">
                         <span className="text-slate-400">Medium:</span>
                         <span className="font-mono capitalize">
                           {link.medium.replace(/_/g, ' ')}
@@ -377,8 +459,8 @@ export default function VillageMap() {
                         const clearance = f1 !== null ? clearance60(f1) : null;
 
                         return (
-                          <div className="pt-1.5 mt-1 border-t border-slate-700/60 text-[11px] space-y-1">
-                            <div className="text-[10px] uppercase font-semibold text-sky-400 tracking-wider">
+                          <div className="pt-1.5 mt-1 border-t border-slate-700/60 text-xs space-y-1">
+                            <div className="text-xs uppercase font-semibold text-sky-400 tracking-wider">
                               Fresnel Zone (Mid-Path)
                             </div>
                             <div className="flex justify-between">
@@ -399,7 +481,7 @@ export default function VillageMap() {
                                 </div>
                               </>
                             )}
-                            <div className="text-[9px] text-slate-500 italic">
+                            <div className="text-xs text-slate-500 italic">
                               estimate, no terrain data
                             </div>
                           </div>
@@ -408,19 +490,19 @@ export default function VillageMap() {
 
                     {link.live && (
                       <>
-                        <div className="flex justify-between text-[11px]">
+                        <div className="flex justify-between text-xs">
                           <span className="text-slate-400">Latency:</span>
                           <span className="font-mono">
                             {(link.live.latency_ms || 0).toFixed(1)} ms
                           </span>
                         </div>
-                        <div className="flex justify-between text-[11px]">
+                        <div className="flex justify-between text-xs">
                           <span className="text-slate-400">Packet Loss:</span>
                           <span className="font-mono">
                             {(link.live.packet_loss_pct || 0).toFixed(1)}%
                           </span>
                         </div>
-                        <div className="flex justify-between text-[11px]">
+                        <div className="flex justify-between text-xs">
                           <span className="text-slate-400">Throughput:</span>
                           <span className="font-mono">
                             {(link.live.throughput_mbps || 0).toFixed(1)} Mbps
@@ -429,12 +511,13 @@ export default function VillageMap() {
                       </>
                     )}
                     {link.isSuspected && (
-                      <div className="pt-1 text-[11px] text-red-400 font-semibold flex items-center gap-1">
+                      <div className="pt-1 text-xs text-red-400 font-semibold flex items-center gap-1">
                         <span>⚠</span> Suspected root cause link
                       </div>
                     )}
-                    <div className="pt-1 border-t border-slate-700/60 text-[10px] text-slate-400">
-                      {label || 'Telemetry'} · source: {dataSource}
+                    <div className="pt-1 border-t border-slate-700/60 text-xs text-slate-400 flex items-center justify-between">
+                      <span>{label || 'Telemetry'}</span>
+                      <span className="capitalize">source: {link.live?.data_source || dataSource}</span>
                     </div>
                   </div>
                 </Popup>
@@ -526,36 +609,36 @@ export default function VillageMap() {
                 <div className="space-y-1.5 text-xs text-slate-200">
                   <div className="flex items-center justify-between border-b border-slate-700/60 pb-1">
                     <span className="font-semibold text-white">Node: {node.id}</span>
-                    <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                    <span className="text-xs uppercase font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
                       {node.type}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400">
+                  <div className="text-xs text-slate-400">
                     Village:{' '}
                     <span className="text-slate-200 font-medium">
                       {node.village || 'None'}
                     </span>
                   </div>
-                  <div className="text-[11px] text-slate-400">
+                  <div className="text-xs text-slate-400">
                     Village Status:{' '}
                     <span className="text-slate-200 font-medium capitalize">
                       {node.villageStatus || 'unknown'}
                     </span>
                   </div>
-                  <div className="text-[10px] font-mono text-slate-400">
+                  <div className="text-xs font-mono text-slate-400">
                     {node.lat.toFixed(5)}° N, {node.lon.toFixed(5)}° E
                   </div>
                   {node.isSuspected && (
-                    <div className="pt-1 text-[11px] text-red-400 font-semibold flex items-center gap-1">
+                    <div className="pt-1 text-xs text-red-400 font-semibold flex items-center gap-1">
                       <span>⚠</span> Suspected root cause component
                     </div>
                   )}
                   {node.isBlastAp && (
-                    <div className="pt-1 text-[11px] text-amber-400 font-medium flex items-center gap-1">
+                    <div className="pt-1 text-xs text-amber-400 font-medium flex items-center gap-1">
                       <span>⚡</span> Blast radius AP (affected subscribers)
                     </div>
                   )}
-                  <div className="pt-1 border-t border-slate-700/60 text-[10px] text-slate-400">
+                  <div className="pt-1 border-t border-slate-700/60 text-xs text-slate-400">
                     {label || 'Telemetry'} · source: {dataSource}
                   </div>
                 </div>

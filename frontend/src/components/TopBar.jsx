@@ -21,8 +21,21 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
   const loading = useStore(s => s.loading);
   const networkStatus = useStore(s => s.networkStatus);
   const cascadeDetected = useStore(s => s.cascadeDetected);
+  const telemetryDataSource = useStore(s => s.telemetryDataSource);
+  const liveMeasurements = useStore(s => s.liveMeasurements);
+  const topology = useStore(s => s.topology);
+  const activeIncident = useStore(s => s.activeIncident);
+  const alertArmed = useStore(s => s.alertArmed);
+  const setAlertArmed = useStore(s => s.setAlertArmed);
+  const voiceMuted = useStore(s => s.voiceMuted);
+  const setVoiceMuted = useStore(s => s.setVoiceMuted);
+  const alertOpen = useStore(s => s.alertOpen);
+  const setAlertOpen = useStore(s => s.setAlertOpen);
 
-  const statusColor = networkStatus === 'healthy' ? 'text-emerald-400' : networkStatus === 'degraded' ? 'text-amber-400' : 'text-red-400';
+  const isLive =
+    telemetryDataSource === 'live' ||
+    topology?.data_source === 'live' ||
+    (Array.isArray(liveMeasurements) && liveMeasurements.some(m => m.data_source === 'live'));
 
   return (
     <header className="flex items-center gap-3 px-4 py-2 bg-[#060e1c] border-b border-slate-800 shrink-0">
@@ -31,7 +44,7 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black text-sm">HT</div>
         <div className="hidden md:block">
           <div className="text-white font-bold text-sm leading-tight">HopTrace</div>
-          <div className="text-slate-500 text-[10px]">Rural ISP Intelligence</div>
+          <div className="text-slate-500 text-xs">Rural ISP Intelligence</div>
         </div>
       </div>
 
@@ -46,23 +59,36 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
         {cascadeDetected && <span className="ml-1 text-red-300">· CASCADE</span>}
       </div>
 
+      {/* Live vs Simulated Telemetry Badge */}
+      <div
+        data-testid="telemetry-source-badge"
+        className={`hidden sm:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-semibold ${
+          isLive
+            ? 'border-emerald-600 bg-emerald-950 text-emerald-300'
+            : 'border-slate-700 bg-slate-900 text-slate-400'
+        }`}
+      >
+        <span className={`w-1.5 h-1.5 rounded-full ${isLive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+        <span>{isLive ? '● Live' : '○ Simulated'}</span>
+      </div>
+
       <div className="flex-1" />
 
-      {/* Language switcher */}
-      <div className="flex items-center gap-0.5 bg-slate-900 rounded-lg p-0.5 border border-slate-700">
-        {LANG_OPTIONS.map(l => (
-          <button
-            key={l.code}
-            onClick={() => setSarvamLanguage(l.code)}
-            className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-              sarvamLanguage === l.code
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {l.label}
-          </button>
-        ))}
+      {/* Language selector dropdown */}
+      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs">
+        <span className="text-slate-400">🌐</span>
+        <select
+          value={sarvamLanguage}
+          onChange={(e) => setSarvamLanguage(e.target.value)}
+          aria-label="Sarvam AI Language"
+          className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer"
+        >
+          {LANG_OPTIONS.map(l => (
+            <option key={l.code} value={l.code} className="bg-slate-900 text-slate-200">
+              {l.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Mode switcher */}
@@ -102,6 +128,46 @@ export default function TopBar({ onOpenSarvam, onRefresh }) {
       <div className={`flex items-center gap-1 text-xs ${backendOnline ? 'text-emerald-400' : 'text-red-400'}`}>
         <span className={`w-2 h-2 rounded-full ${backendOnline ? 'bg-emerald-400' : 'bg-red-500'}`} />
         <span className="hidden sm:inline">API</span>
+      </div>
+
+      {/* Demo Voice & Alert Controls */}
+      <div className="flex items-center gap-1.5" aria-label="Demo Voice Controls">
+        <button
+          type="button"
+          onClick={() => setAlertArmed(prev => !prev)}
+          title="Arm audio for immediate playback on fault"
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors ${
+            alertArmed
+              ? 'border-emerald-600 bg-emerald-950/80 text-emerald-300'
+              : 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200'
+          }`}
+        >
+          <span>{alertArmed ? '● Armed' : '○ Arm Audio Demo'}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setVoiceMuted(prev => !prev)}
+          title="Toggle Voice Mute"
+          className={`flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors ${
+            voiceMuted
+              ? 'border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200'
+              : 'border-blue-600/60 bg-blue-950/60 text-blue-300 hover:text-blue-200'
+          }`}
+        >
+          <span>{voiceMuted ? '🔇 Muted' : '🔊 Voice On'}</span>
+        </button>
+
+        {activeIncident && !alertOpen && (
+          <button
+            type="button"
+            onClick={() => setAlertOpen(true)}
+            title="Replay Alert Overlay"
+            className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-red-700 bg-red-950/80 text-red-300 hover:bg-red-900 text-xs font-semibold whitespace-nowrap transition-colors"
+          >
+            <span>🚨 Replay Alert</span>
+          </button>
+        )}
       </div>
 
       {/* Refresh */}

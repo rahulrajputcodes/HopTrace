@@ -9,6 +9,9 @@ Exposes stable, typed Python functions for backend services to consume:
 - get_affected_subscribers()
 - get_run_measurements()
 - check_neo4j_health()
+- ingest_live_measurements()
+- get_live_measurements()
+- clear_live_measurements()
 
 Adheres strictly to docs/api-contract.md.
 """
@@ -21,7 +24,9 @@ from .diagnostics import DiagnosticEngine
 from .graph_store import InMemoryGraphStore, Neo4jGraphStore
 from .models import (
     AffectedSubscribersResponse,
+    EvidenceItem,
     IncidentDetails,
+    Measurement,
     NetworkTopology,
     RunMeasurementsResponse,
     ScenarioRunResponse,
@@ -45,6 +50,7 @@ class HopTraceEngine:
         self._runs: Dict[str, RunMeasurementsResponse] = {}
         self._incidents: Dict[str, IncidentDetails] = {}
         self._incident_order: List[str] = []
+        self._live_measurements: Dict[str, Any] = {}
 
         # Ramp state for gradual_degradation scenario.
         # Cleared when a baseline run or any new scenario replaces it.
@@ -171,12 +177,13 @@ class HopTraceEngine:
             ramp_progress=ramp_progress,
         )
 
-        # Store run measurements
+        # Store run measurements in memory and persist in SQLite
         self._runs[run_id] = RunMeasurementsResponse(
             run_id=run_id,
             data_source="simulated",
             measurements=measurements,
         )
+        self._persist_run(run_id=run_id, data_source="simulated", measurements=measurements)
 
         # 2. Retrieve topology for diagnostic context (device relationships)
         topology = self.get_topology(force_in_memory=force_in_memory)
@@ -203,6 +210,86 @@ class HopTraceEngine:
             measurements_count=len(measurements),
             incident_id=incident_id,
         )
+
+    def ingest_live_measurements(self, measurements: List[Any]) -> ScenarioRunResponse:
+        """Stores live measurements, pushes them into the time-series store, and runs diagnosis."""
+        for m in measurements:
+            m.data_source = "live"
+            self._live_measurements[m.component_id] = m
+
+        from app.engine.time_series import get_time_series_store
+        ts_store = get_time_series_store()
+        ts_store.push_measurements_batch(measurements)
+
+        # Build full measurements list by overlaying live measurements onto baseline
+        baseline_meas = self.telemetry_generator.generate_baseline_with_noise()
+        active_meas_map = {m.component_id: m for m in baseline_meas}
+        for m in self._live_measurements.values():
+            active_meas_map[m.component_id] = m
+        active_measurements = list(active_meas_map.values())
+
+        run_id = f"live-{uuid.uuid4().hex[:8]}"
+        self._runs[run_id] = RunMeasurementsResponse(
+            run_id=run_id,
+            data_source="live",
+            measurements=active_measurements,
+        )
+        self._persist_run(run_id=run_id, data_source="live", measurements=active_measurements)
+
+        topology = self.get_topology(force_in_memory=True)
+        incident = self.diagnostic_engine.diagnose(
+            measurements=active_measurements,
+            topology=topology,
+            run_id=run_id,
+        )
+
+        incident_id: Optional[str] = None
+        if incident.suspected_component_id is not None and incident.status == "open":
+            incident_id = incident.id
+            self._incidents[incident.id] = incident
+            self._incident_order.append(incident.id)
+        else:
+            self.close_open_incidents()
+
+        return ScenarioRunResponse(
+            run_id=run_id,
+            data_source="live",
+            measurements_count=len(measurements),
+            incident_id=incident_id,
+        )
+
+    def _persist_run(
+        self,
+        run_id: str,
+        data_source: str,
+        measurements: List[Any],
+    ) -> None:
+        """Persists run and measurements into SQLite using configured retention limit."""
+        try:
+            from app.config import settings
+            from app.db.connection import get_db_connection
+            from app.db.repository import save_run
+            conn = get_db_connection()
+            try:
+                save_run(
+                    conn=conn,
+                    run_id=run_id,
+                    data_source=data_source,
+                    measurements=measurements,
+                    retention_limit=settings.runs_retention_limit,
+                )
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+    def get_live_measurements(self) -> Dict[str, Any]:
+        """Returns currently ingested live measurements indexed by component ID."""
+        return self._live_measurements
+
+    def clear_live_measurements(self) -> None:
+        """Clears all ingested live measurements."""
+        self._live_measurements.clear()
 
     def close_open_incidents(self) -> List[str]:
         """Marks all currently open incidents in the engine store as closed."""
@@ -250,8 +337,42 @@ class HopTraceEngine:
         )
 
     def get_run_measurements(self, run_id: str) -> Optional[RunMeasurementsResponse]:
-        """Retrieves simulated measurements for a given run ID."""
-        return self._runs.get(run_id)
+        """Retrieves measurements for a given run ID from memory, falling back to SQLite."""
+        if run_id in self._runs:
+            return self._runs[run_id]
+
+        try:
+            from app.db.connection import get_db_connection
+            from app.db.repository import get_run
+            conn = get_db_connection()
+            try:
+                run_dict = get_run(conn, run_id)
+                if run_dict:
+                    meas = [
+                        Measurement(
+                            component_id=m["component_id"],
+                            timestamp_utc=m["timestamp_utc"],
+                            latency_ms=m.get("latency_ms"),
+                            packet_loss_pct=m.get("packet_loss_pct"),
+                            throughput_mbps=m.get("throughput_mbps"),
+                            connectivity_ok=m.get("connectivity_ok", True),
+                            data_source=m.get("data_source", run_dict.get("data_source", "simulated")),
+                        )
+                        for m in run_dict.get("measurements", [])
+                    ]
+                    run_resp = RunMeasurementsResponse(
+                        run_id=run_dict["run_id"],
+                        data_source=run_dict.get("data_source", "simulated"),
+                        measurements=meas,
+                    )
+                    self._runs[run_id] = run_resp
+                    return run_resp
+            finally:
+                conn.close()
+        except Exception:
+            pass
+
+        return None
 
     def check_neo4j_health(self) -> Dict[str, Any]:
         """Checks Neo4j database connectivity."""
@@ -299,6 +420,18 @@ def run_scenario(
         force_in_memory=force_in_memory,
         ramp_progress=ramp_progress,
     )
+
+
+def ingest_live_measurements(measurements: List[Any]) -> ScenarioRunResponse:
+    return get_engine().ingest_live_measurements(measurements)
+
+
+def get_live_measurements() -> Dict[str, Any]:
+    return get_engine().get_live_measurements()
+
+
+def clear_live_measurements() -> None:
+    get_engine().clear_live_measurements()
 
 
 def get_incident_details(incident_id: str) -> Optional[IncidentDetails]:

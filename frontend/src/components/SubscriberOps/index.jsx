@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import useStore from '../../store/appStore';
 import { useApi } from '../../hooks/useApi';
+import { getSubscriberVillage, getSubscriberAp } from './helpers';
 
 const PLAN_META = {
   Basic:      { price: 399,  color: '#3b82f6', speed: '20 Mbps' },
@@ -35,7 +36,7 @@ function QRModal({ subscriber, onClose }) {
         <div className="text-slate-500 text-xs mb-4">Scan with PhonePe · GPay · Paytm</div>
         <div className="flex gap-2">
           <button
-            onClick={() => { try { window.open(upiUri); } catch(_) {} }}
+            onClick={() => { try { window.open(upiUri); } catch { /* ignore popup block */ } }}
             className="flex-1 py-2 bg-emerald-700 hover:bg-emerald-600 text-white text-xs rounded-lg transition-colors font-medium"
           >
             Open UPI App
@@ -52,6 +53,7 @@ function QRModal({ subscriber, onClose }) {
 export default function SubscriberOps() {
   const allSubscribers = useStore(s => s.allSubscribers);
   const affectedSubscribers = useStore(s => s.affectedSubscribers);
+  const villages = useStore(s => s.villages);
   const dashboardMode = useStore(s => s.dashboardMode);
   const { sendReminder } = useApi();
 
@@ -153,8 +155,8 @@ export default function SubscriberOps() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{sub.village || '—'}</td>
-                      <td className="px-3 py-2 text-slate-400">{sub.ap_id || '—'}</td>
+                      <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{getSubscriberVillage(sub, villages)}</td>
+                      <td className="px-3 py-2 text-slate-400">{getSubscriberAp(sub)}</td>
                       <td className="px-3 py-2">
                         <span
                           className="px-1.5 py-0.5 rounded text-[10px] font-medium whitespace-nowrap"

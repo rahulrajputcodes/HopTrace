@@ -39,6 +39,7 @@ from .telemetry import (
 from .diagnostics import (
     DiagnosticEngine,
     diagnose,
+    derive_topology_branches,
 )
 from .graph_store import (
     InMemoryGraphStore,
@@ -47,14 +48,17 @@ from .graph_store import (
 from .facade import (
     HopTraceEngine,
     check_neo4j_health,
+    clear_live_measurements,
+    close_open_incidents,
     get_affected_subscribers,
     get_engine,
     get_incident_details,
     get_latest_incident,
     get_latest_open_incident,
-    close_open_incidents,
+    get_live_measurements,
     get_run_measurements,
     get_topology,
+    ingest_live_measurements,
     run_scenario,
     seed_topology,
 )
@@ -94,6 +98,7 @@ __all__ = [
     # Diagnostics
     "DiagnosticEngine",
     "diagnose",
+    "derive_topology_branches",
     # Stores
     "InMemoryGraphStore",
     "Neo4jGraphStore",
@@ -101,13 +106,16 @@ __all__ = [
     "HopTraceEngine",
     "get_engine",
     "check_neo4j_health",
+    "clear_live_measurements",
     "get_affected_subscribers",
     "get_incident_details",
     "get_latest_incident",
     "get_latest_open_incident",
+    "get_live_measurements",
     "close_open_incidents",
     "get_run_measurements",
     "get_topology",
+    "ingest_live_measurements",
     "run_scenario",
     "seed_topology",
 ]

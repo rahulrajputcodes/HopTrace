@@ -102,7 +102,7 @@ export function useApi() {
       // result.explanation may be a JSON string or object
       let report = result.explanation;
       if (typeof report === 'string') {
-        try { report = JSON.parse(report); } catch (_) {}
+        try { report = JSON.parse(report); } catch { /* ignore invalid JSON string */ }
       }
       store.setAiReport(report);
       store.setSarvamLanguage(language);
@@ -149,6 +149,10 @@ export function useApi() {
     return result;
   }, [store]);
 
+  const fetchBusinessImpact = useCallback(async (incidentId) => {
+    return api(`/incidents/${incidentId}/business-impact`);
+  }, []);
+
   return {
     fetchAll,
     runScenario,
@@ -157,5 +161,6 @@ export function useApi() {
     sendReminder,
     fetchLinkHistory,
     fetchRiskSnapshot,
+    fetchBusinessImpact,
   };
 }

@@ -37,7 +37,9 @@ function RiskGauge({ value }) {
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className="text-[10px] text-slate-500 uppercase font-medium">Risk Score</div>
+      <div className="text-xs text-slate-400 uppercase font-semibold text-center whitespace-nowrap">
+        Risk score / 100
+      </div>
       <div className="relative w-24 h-14">
         <svg viewBox="0 0 100 60" className="w-full h-full">
           <path d="M10 55 A45 45 0 0 1 90 55" fill="none" stroke="#1e293b" strokeWidth="8" strokeLinecap="round"/>
@@ -81,14 +83,42 @@ export default function TelemetryCharts() {
     }
   }, [fetchLinkHistory]);
 
-  useEffect(() => { loadHistory(selectedLink); }, [selectedLink, loadHistory]);
+  useEffect(() => {
+    let ignore = false;
+    fetchLinkHistory(selectedLink, 50)
+      .then((data) => {
+        if (!ignore) {
+          setSamples((data.samples || []).map((s, i) => ({ ...s, tick: i + 1 })));
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setSamples([]);
+          setLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [selectedLink, fetchLinkHistory]);
 
   // Re-fetch on each live tick to keep charts current
   const liveTick_latency = liveTick?.latency_ms;
   useEffect(() => {
-    if (liveTick_latency !== undefined) loadHistory(selectedLink);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveTick_latency]);
+    if (liveTick_latency === undefined) return;
+    let ignore = false;
+    fetchLinkHistory(selectedLink, 50)
+      .then((data) => {
+        if (!ignore) {
+          setSamples((data.samples || []).map((s, i) => ({ ...s, tick: i + 1 })));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, [liveTick_latency, selectedLink, fetchLinkHistory]);
 
   return (
     <div className="bg-[#0a1628] border border-slate-800 rounded-xl overflow-hidden">
@@ -130,8 +160,8 @@ export default function TelemetryCharts() {
                     ['Throughput', `${(liveTick.throughput_mbps || 0).toFixed(1)}`, '#10b981'],
                   ].map(([label, val, color]) => (
                     <div key={label} className="flex flex-col items-center p-2 bg-slate-900 rounded-lg">
-                      <span className="text-[9px] text-slate-500">{label}</span>
-                      <span className="text-sm font-bold" style={{ color }}>{val}</span>
+                      <span className="text-xs font-medium text-slate-400">{label}</span>
+                      <span className="text-base font-bold" style={{ color }}>{val}</span>
                     </div>
                   ))}
                 </div>
@@ -141,7 +171,7 @@ export default function TelemetryCharts() {
             {/* Per-metric area charts */}
             {METRICS.map(m => (
               <div key={m.key}>
-                <div className="text-[10px] text-slate-500 font-medium mb-1">{m.label}</div>
+                <div className="text-xs text-slate-400 font-medium mb-1">{m.label}</div>
                 <ResponsiveContainer width="100%" height={60}>
                   <AreaChart data={samples} margin={{ top: 2, right: 4, left: -22, bottom: 0 }}>
                     <defs>
@@ -152,7 +182,7 @@ export default function TelemetryCharts() {
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false}/>
                     <XAxis dataKey="tick" hide/>
-                    <YAxis tick={{ fontSize: 9, fill: '#64748b' }} width={30}/>
+                    <YAxis tick={{ fontSize: 12, fill: '#64748b' }} width={34}/>
                     <Tooltip content={<CustomTooltip unit={m.unit}/>}/>
                     <Area
                       type="monotone" dataKey={m.key} name="Raw"

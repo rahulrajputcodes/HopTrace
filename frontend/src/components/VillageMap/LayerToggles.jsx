@@ -24,7 +24,7 @@ export default function LayerToggles({
       className="absolute top-14 right-3 z-[1000] bg-[#0b172a]/95 backdrop-blur-sm border border-slate-700/70 rounded-md shadow-xl text-xs text-slate-300 px-3 py-2"
     >
       <div className="flex items-center gap-3">
-        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:inline">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider hidden sm:inline">
           Layers
         </span>
 
@@ -36,7 +36,7 @@ export default function LayerToggles({
             onChange={() => handleToggle('coverage')}
             className="w-3.5 h-3.5 rounded border-slate-600 text-sky-500 bg-slate-800 focus:ring-1 focus:ring-sky-400 cursor-pointer"
           />
-          <span className="text-[11px]">Coverage</span>
+          <span className="text-xs">Coverage</span>
         </label>
 
         {/* Links Toggle */}
@@ -47,7 +47,7 @@ export default function LayerToggles({
             onChange={() => handleToggle('links')}
             className="w-3.5 h-3.5 rounded border-slate-600 text-sky-500 bg-slate-800 focus:ring-1 focus:ring-sky-400 cursor-pointer"
           />
-          <span className="text-[11px]">Links</span>
+          <span className="text-xs">Links</span>
         </label>
 
         {/* Labels Toggle */}
@@ -66,12 +66,12 @@ export default function LayerToggles({
             className="w-3.5 h-3.5 rounded border-slate-600 text-sky-500 bg-slate-800 focus:ring-1 focus:ring-sky-400 cursor-pointer"
           />
           <span
-            className={`text-[11px] ${
+            className={`text-xs ${
               labelsActive ? 'text-sky-300 font-medium' : 'text-slate-400'
             }`}
           >
             Labels
-            <span className="text-[9px] text-slate-500 ml-1">
+            <span className="text-xs text-slate-500 ml-1">
               (≥{LABEL_MIN_ZOOM})
             </span>
           </span>

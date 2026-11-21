@@ -12,7 +12,8 @@ const useStore = create((set, get) => ({
   setTopology: (t) => set({ topology: t }),
 
   // ── Live telemetry ──────────────────────────────────────────────────────
-  liveMeasurements: [],        // [{link_id, latency_ms, packet_loss_pct, throughput_mbps, connectivity_ok, risk_score, trend, alert_level}]
+  liveMeasurements: [],        // [{link_id, latency_ms, packet_loss_pct, throughput_mbps, connectivity_ok, risk_score, trend, alert_level, data_source}]
+  telemetryDataSource: 'simulated',
   lastTick: 0,
   networkStatus: 'healthy',   // healthy | degraded | critical
   cascadeDetected: false,
@@ -22,8 +23,12 @@ const useStore = create((set, get) => ({
     const nextActiveIncident = hasActiveIncident ? payload.active_incident : get().activeIncident;
     const shouldClearAffected = hasActiveIncident && payload.active_incident === null;
 
+    const hasLive = payload.data_source === 'live' || (payload.measurements || []).some(m => m.data_source === 'live');
+    const source = hasLive ? 'live' : (payload.data_source || 'simulated');
+
     set({
       liveMeasurements: payload.measurements || [],
+      telemetryDataSource: source,
       lastTick: payload.tick || 0,
       networkStatus: payload.network_status || 'healthy',
       cascadeDetected: payload.cascade_detected || false,
@@ -51,7 +56,35 @@ const useStore = create((set, get) => ({
 
   // ── All subscribers ─────────────────────────────────────────────────────
   allSubscribers: [],
-  setAllSubscribers: (subs) => set({ allSubscribers: subs }),
+  setAllSubscribers: (subs) => {
+    const AP_TO_VILLAGE = {
+      AP1: 'Rampur',
+      AP2: 'Rampur',
+      AP3: 'Bhatpur',
+      AP4: 'Bhatpur',
+      AP5: 'Daulatpur',
+      AP6: 'Daulatpur',
+    };
+    const enriched = (subs || []).map((s) => {
+      const ap = s.access_point_id || s.ap_id;
+      const village = s.village || (ap ? AP_TO_VILLAGE[ap] : null);
+      return {
+        ...s,
+        ap_id: ap,
+        access_point_id: ap,
+        ...(village ? { village } : {}),
+      };
+    });
+    set({ allSubscribers: enriched });
+  },
+
+  // ── Alert overlay & voice demo controls ─────────────────────────────────
+  alertArmed: true,
+  voiceMuted: false,
+  alertOpen: false,
+  setAlertArmed: (v) => set(typeof v === 'function' ? s => ({ alertArmed: v(s.alertArmed) }) : { alertArmed: v }),
+  setVoiceMuted: (v) => set(typeof v === 'function' ? s => ({ voiceMuted: v(s.voiceMuted) }) : { voiceMuted: v }),
+  setAlertOpen: (v) => set(typeof v === 'function' ? s => ({ alertOpen: v(s.alertOpen) }) : { alertOpen: v }),
 
   // ── Villages ────────────────────────────────────────────────────────────
   villages: [],
@@ -68,10 +101,13 @@ const useStore = create((set, get) => ({
   setIsPlayingAudio: (v) => set({ isPlayingAudio: v }),
 
   // ── Sarvam config ───────────────────────────────────────────────────────
-  sarvamApiKey: localStorage.getItem('ht_sarvam_key') || '',
+  sarvamApiKey: (typeof localStorage !== 'undefined' ? localStorage.getItem('ht_sarvam_key') : '') || '',
   sarvamLanguage: 'hi',
   sarvamSpeaker: 'meera',
-  setSarvamKey: (k) => { localStorage.setItem('ht_sarvam_key', k); set({ sarvamApiKey: k }); },
+  setSarvamKey: (k) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem('ht_sarvam_key', k);
+    set({ sarvamApiKey: k });
+  },
   setSarvamLanguage: (l) => set({ sarvamLanguage: l }),
   setSarvamSpeaker: (s) => set({ sarvamSpeaker: s }),
 
@@ -80,8 +116,11 @@ const useStore = create((set, get) => ({
   setSelectedElement: (el) => set({ selectedElement: el }),
 
   // ── UI mode ─────────────────────────────────────────────────────────────
-  dashboardMode: localStorage.getItem('ht_mode') || 'noc',  // noc | business
-  setDashboardMode: (m) => { localStorage.setItem('ht_mode', m); set({ dashboardMode: m }); },
+  dashboardMode: (typeof localStorage !== 'undefined' ? localStorage.getItem('ht_mode') : '') || 'noc',  // noc | business
+  setDashboardMode: (m) => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem('ht_mode', m);
+    set({ dashboardMode: m });
+  },
 
   // ── Toast ───────────────────────────────────────────────────────────────
   toasts: [],

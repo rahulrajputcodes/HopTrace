@@ -1,5 +1,5 @@
 """
-Data access repository for subscribers, payment reminders, and incidents.
+Data access repository for subscribers, payment reminders, incidents, and test runs.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def list_subscribers(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     """Fetch all subscribers ordered by ID."""
     cursor = conn.execute(
         """
-        SELECT id, display_name, plan, access_point_id, status, payment_status, due_date
+        SELECT id, display_name, plan, plan_price, access_point_id, status, payment_status, due_date, phone, preferred_language
         FROM subscribers
         ORDER BY id ASC;
         """
@@ -28,7 +28,7 @@ def get_subscriber(conn: sqlite3.Connection, subscriber_id: str) -> dict[str, An
     """Fetch a single subscriber by ID, or None if not found."""
     cursor = conn.execute(
         """
-        SELECT id, display_name, plan, access_point_id, status, payment_status, due_date
+        SELECT id, display_name, plan, plan_price, access_point_id, status, payment_status, due_date, phone, preferred_language
         FROM subscribers
         WHERE id = ?;
         """,
@@ -48,7 +48,7 @@ def get_subscribers_by_access_points(
     placeholders = ",".join("?" for _ in access_point_ids)
     cursor = conn.execute(
         f"""
-        SELECT id, display_name, access_point_id
+        SELECT id, display_name, plan, plan_price, access_point_id, status, payment_status, due_date, phone, preferred_language
         FROM subscribers
         WHERE access_point_id IN ({placeholders})
         ORDER BY id ASC;
@@ -68,7 +68,7 @@ def get_subscribers_by_ids(
     placeholders = ",".join("?" for _ in subscriber_ids)
     cursor = conn.execute(
         f"""
-        SELECT id, display_name, access_point_id
+        SELECT id, display_name, plan, plan_price, access_point_id, status, payment_status, due_date, phone, preferred_language
         FROM subscribers
         WHERE id IN ({placeholders})
         ORDER BY id ASC;
@@ -239,3 +239,164 @@ def close_open_incidents(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+# ── Run and Measurement Queries ──────────────────────────────────────────────
+
+def save_run(
+    conn: sqlite3.Connection,
+    run_id: str,
+    data_source: str,
+    measurements: list[Any],
+    created_at: str | None = None,
+    retention_limit: int | None = None,
+) -> None:
+    """
+    Persist a test run and its component measurements into SQLite.
+    Prunes older runs beyond `retention_limit` if configured.
+    """
+    now_iso = created_at or datetime.now(timezone.utc).isoformat()
+
+    conn.execute(
+        """
+        INSERT INTO runs (run_id, data_source, created_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(run_id) DO UPDATE SET
+            data_source = excluded.data_source,
+            created_at = excluded.created_at;
+        """,
+        (run_id, data_source, now_iso),
+    )
+
+    # Replace existing measurements for idempotency
+    conn.execute("DELETE FROM measurements WHERE run_id = ?;", (run_id,))
+
+    rows = []
+    for m in measurements:
+        if hasattr(m, "component_id"):
+            comp_id = m.component_id
+            ts = getattr(m, "timestamp_utc", None) or getattr(m, "timestamp", None) or now_iso
+            lat = m.latency_ms
+            loss = m.packet_loss_pct
+            tp = m.throughput_mbps
+            conn_ok = 1 if m.connectivity_ok else 0
+            ds = getattr(m, "data_source", data_source)
+        elif isinstance(m, dict):
+            comp_id = m["component_id"]
+            ts = m.get("timestamp_utc") or m.get("timestamp") or now_iso
+            lat = m.get("latency_ms")
+            loss = m.get("packet_loss_pct")
+            tp = m.get("throughput_mbps")
+            conn_ok = 1 if m.get("connectivity_ok", True) else 0
+            ds = m.get("data_source", data_source)
+        else:
+            continue
+        rows.append((run_id, comp_id, ts, lat, loss, tp, conn_ok, ds))
+
+    if rows:
+        conn.executemany(
+            """
+            INSERT INTO measurements (
+                run_id, component_id, timestamp_utc, latency_ms, packet_loss_pct,
+                throughput_mbps, connectivity_ok, data_source
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            rows,
+        )
+
+    if retention_limit is not None and retention_limit > 0:
+        prune_runs(conn, retention_limit)
+
+    conn.commit()
+
+
+def get_run(conn: sqlite3.Connection, run_id: str) -> dict[str, Any] | None:
+    """Fetch run metadata and measurements list by run_id, or None if not found."""
+    cursor = conn.execute(
+        """
+        SELECT run_id, data_source, created_at
+        FROM runs
+        WHERE run_id = ?;
+        """,
+        (run_id,),
+    )
+    row = cursor.fetchone()
+    if row is None:
+        return None
+
+    meas_cursor = conn.execute(
+        """
+        SELECT component_id, timestamp_utc, latency_ms, packet_loss_pct,
+               throughput_mbps, connectivity_ok, data_source
+        FROM measurements
+        WHERE run_id = ?
+        ORDER BY id ASC;
+        """,
+        (run_id,),
+    )
+    measurements = [
+        {
+            "component_id": r["component_id"],
+            "timestamp_utc": r["timestamp_utc"],
+            "latency_ms": r["latency_ms"],
+            "packet_loss_pct": r["packet_loss_pct"],
+            "throughput_mbps": r["throughput_mbps"],
+            "connectivity_ok": bool(r["connectivity_ok"]),
+            "data_source": r["data_source"],
+        }
+        for r in meas_cursor.fetchall()
+    ]
+
+    return {
+        "run_id": row["run_id"],
+        "data_source": row["data_source"],
+        "created_at": row["created_at"],
+        "measurements": measurements,
+    }
+
+
+def prune_runs(conn: sqlite3.Connection, retention_limit: int) -> int:
+    """Retains the most recent `retention_limit` runs, deleting older runs and measurements."""
+    if retention_limit <= 0:
+        return 0
+
+    cursor = conn.execute(
+        """
+        DELETE FROM runs
+        WHERE run_id NOT IN (
+            SELECT run_id FROM runs
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT ?
+        );
+        """,
+        (retention_limit,),
+    )
+    deleted = cursor.rowcount
+    conn.execute(
+        """
+        DELETE FROM measurements
+        WHERE run_id NOT IN (SELECT run_id FROM runs);
+        """
+    )
+    conn.commit()
+    return deleted
+
+
+def count_runs(conn: sqlite3.Connection) -> int:
+    """Returns the total number of persisted runs in SQLite."""
+    cursor = conn.execute("SELECT COUNT(*) FROM runs;")
+    return cursor.fetchone()[0]
+
+
+def list_runs(conn: sqlite3.Connection, limit: int = 50) -> list[dict[str, Any]]:
+    """Fetch recent runs without measurements, ordered by newest first."""
+    cursor = conn.execute(
+        """
+        SELECT run_id, data_source, created_at
+        FROM runs
+        ORDER BY created_at DESC, rowid DESC
+        LIMIT ?;
+        """,
+        (limit,),
+    )
+    return [dict(row) for row in cursor.fetchall()]

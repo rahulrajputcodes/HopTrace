@@ -52,7 +52,7 @@ function EvidenceItem({ ev }) {
       <div className="min-w-0 flex-1">
         <div className="text-xs text-slate-300 font-medium">{ev.metric || ev.description}</div>
         {ev.observed !== undefined && (
-          <div className="text-[10px] text-slate-500 mt-0.5">
+          <div className="text-xs text-slate-500 mt-0.5">
             Observed: <span className="text-slate-300">{typeof ev.observed === 'number' ? ev.observed.toFixed(1) : ev.observed}</span>
             {ev.baseline !== undefined && (
               <> · Baseline: <span className="text-slate-400">{typeof ev.baseline === 'number' ? ev.baseline.toFixed(1) : ev.baseline}</span></>
@@ -61,7 +61,7 @@ function EvidenceItem({ ev }) {
         )}
       </div>
       <span
-        className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border shrink-0"
+        className="text-xs font-semibold uppercase px-1.5 py-0.5 rounded border shrink-0"
         style={{ color: col, borderColor: col + '55', background: col + '11' }}
       >
         {sev}
@@ -77,26 +77,12 @@ export default function IncidentPanel() {
   const aiReport = useStore(s => s.aiReport);
   const sarvamLanguage = useStore(s => s.sarvamLanguage);
   const sarvamApiKey = useStore(s => s.sarvamApiKey);
-  const cascadeDetected = useStore(s => s.cascadeDetected);
-  const flappingLinks = useStore(s => s.flappingLinks);
   const { explainIncident } = useApi();
 
   const elapsed = useElapsedTime(activeIncident?.created_at);
 
   if (!activeIncident) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-8 text-center bg-[#0a1628] border border-slate-800 rounded-xl">
-        <span className="text-3xl">✅</span>
-        <div className="text-emerald-400 font-semibold text-sm">Network Healthy</div>
-        <div className="text-slate-500 text-xs px-4">No active incidents · Run a lab scenario to simulate a fault</div>
-        {cascadeDetected && (
-          <div className="text-orange-400 text-xs mt-1">⚠ Cascade condition detected in telemetry</div>
-        )}
-        {flappingLinks.length > 0 && (
-          <div className="text-purple-400 text-xs">〰 Flapping: {flappingLinks.join(', ')}</div>
-        )}
-      </div>
-    );
+    return null;
   }
 
   const faultClass = parseFaultClass(activeIncident.summary);
@@ -125,7 +111,7 @@ export default function IncidentPanel() {
       }`}>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${SEV_COLORS[severity] || SEV_COLORS.medium}`}>
+            <span className={`text-xs font-bold uppercase px-2 py-0.5 rounded border ${SEV_COLORS[severity] || SEV_COLORS.medium}`}>
               {severity}
             </span>
             <span className={`text-sm font-bold ${faultMeta.color}`}>
@@ -142,7 +128,7 @@ export default function IncidentPanel() {
         </div>
         <div className="shrink-0 text-right">
           <div className="text-white font-bold text-lg">{confidence}%</div>
-          <div className="text-slate-500 text-[10px]">Confidence</div>
+          <div className="text-slate-500 text-xs">Confidence</div>
         </div>
       </div>
 
@@ -151,7 +137,7 @@ export default function IncidentPanel() {
         {/* Evidence chain */}
         {evidence.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 font-medium uppercase mb-1.5">
+            <div className="text-xs text-slate-500 font-medium uppercase mb-1.5">
               Evidence Chain ({evidence.length})
             </div>
             <div className="space-y-1.5">
@@ -163,15 +149,15 @@ export default function IncidentPanel() {
         {/* Affected subscribers */}
         {affectedSubscribers.length > 0 && (
           <div>
-            <div className="text-[10px] text-slate-500 font-medium uppercase mb-1.5">
+            <div className="text-xs text-slate-500 font-medium uppercase mb-1.5">
               Affected Subscribers ({affectedSubscribers.length})
             </div>
             {Object.entries(byVillage).map(([village, subs]) => (
               <div key={village} className="mb-2">
-                <div className="text-[10px] text-slate-500 mb-1">{village}</div>
+                <div className="text-xs text-slate-500 mb-1">{village}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {subs.map(s => (
-                    <div key={s.id} className="px-2 py-1 bg-red-950/40 border border-red-800/50 rounded-lg text-[10px] text-red-300">
+                    <div key={s.id} className="px-2 py-1 bg-red-950/40 border border-red-800/50 rounded-lg text-xs text-red-300">
                       {s.display_name || s.id}
                       <span className="text-red-500 ml-1">({s.plan})</span>
                     </div>
@@ -185,7 +171,7 @@ export default function IncidentPanel() {
         {/* AI Report preview */}
         {aiReport && !aiLoading && (
           <div className="p-3 bg-purple-950/30 border border-purple-800/50 rounded-lg">
-            <div className="text-[10px] text-purple-400 font-medium uppercase mb-1.5">Sarvam AI Analysis</div>
+            <div className="text-xs text-purple-400 font-medium uppercase mb-1.5">Sarvam AI Analysis</div>
             {typeof aiReport === 'object' ? (
               <div className="space-y-1.5 text-xs">
                 {aiReport.executive_summary && (
@@ -193,14 +179,14 @@ export default function IncidentPanel() {
                 )}
                 {aiReport.field_operator_steps && (
                   <div className="text-slate-400">
-                    <div className="text-[10px] text-slate-500 mb-0.5">Field Steps:</div>
+                    <div className="text-xs text-slate-500 mb-0.5">Field Steps:</div>
                     {Array.isArray(aiReport.field_operator_steps)
                       ? aiReport.field_operator_steps.slice(0, 3).map((s, i) => <div key={i}>• {s}</div>)
                       : <div>{aiReport.field_operator_steps}</div>}
                   </div>
                 )}
                 {aiReport.eta && (
-                  <div className="text-emerald-400 text-[10px]">ETA: {aiReport.eta}</div>
+                  <div className="text-emerald-400 text-xs">ETA: {aiReport.eta}</div>
                 )}
               </div>
             ) : (

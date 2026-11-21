@@ -71,6 +71,7 @@ class Subscriber(BaseModel):
     display_name: str
     access_point_id: str
     plan: Optional[str] = "Standard"
+    plan_price: Optional[float] = 399.0
     status: Optional[str] = "active"
     payment_status: Optional[str] = "paid"
     due_date: Optional[str] = "2026-11-01"
