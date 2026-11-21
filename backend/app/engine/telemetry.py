@@ -64,11 +64,11 @@ BASELINE_TELEMETRY: Dict[str, Dict[str, float | bool]] = {
 }
 
 # Extended baseline for 60 GHz millimeter-wave link (e.g. L7 PtP high-bandwidth link)
-# Kept separate from canonical BASELINE_TELEMETRY to preserve 5-link topology contract.
+# Matches the canonical 14-link baseline metrics for L7.
 L7_BASELINE: Dict[str, float | bool] = {
-    "latency_ms": 2.0,
-    "packet_loss_pct": 0.1,
-    "throughput_mbps": 950.0,
+    "latency_ms": 12.0,
+    "packet_loss_pct": 0.2,
+    "throughput_mbps": 40.0,
     "connectivity_ok": True,
 }
 
