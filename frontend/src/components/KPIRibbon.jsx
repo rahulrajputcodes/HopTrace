@@ -24,6 +24,9 @@ export default function KPIRibbon() {
   const topology = useStore(s => s.topology);
   const liveMeasurements = useStore(s => s.liveMeasurements);
   const riskSnapshot = useStore(s => s.riskSnapshot);
+  const activeIncident = useStore(s => s.activeIncident);
+  const cascadeDetected = useStore(s => s.cascadeDetected);
+  const flappingLinks = useStore(s => s.flappingLinks);
 
   const totalSubs = allSubscribers.length || 20;
   const affectedCount = affectedSubscribers.length;
@@ -79,7 +82,7 @@ export default function KPIRibbon() {
     : 0;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 px-3 pt-2 pb-1 shrink-0">
+  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 px-3 pt-2 pb-1 shrink-0">
       {/* Active Connections */}
       <KPICard
         statusDot={affectedCount > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}
@@ -126,12 +129,20 @@ export default function KPIRibbon() {
         </div>
       </KPICard>
 
-      {/* Solar & Power */}
+      {/* Fault Detection */}
       <KPICard
-        statusDot="bg-emerald-400"
-        title="Solar & Power Fleet"
-        value="12.7V avg"
-        sub="â˜€ï¸ 2 Solar towers Â· Grid PoP nominal"
+        accent={activeIncident ? 'red' : 'green'}
+        title="Fault Detection"
+        value={
+          activeIncident
+            ? <span className="text-red-400">{activeIncident.suspected_component_id || 'ALARM'}</span>
+            : <span className="text-emerald-400">HEALTHY</span>
+        }
+        sub={
+          activeIncident
+            ? `${Math.round((activeIncident.confidence_score || 0.9) * 100)}% confidence${cascadeDetected ? ' · CASCADE' : ''}`
+            : `Zero open incidents · ${flappingLinks.length > 0 ? flappingLinks.length + ' flapping' : 'All stable'}`
+        }
       />
     </div>
   );
