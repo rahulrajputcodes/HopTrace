@@ -1,110 +1,99 @@
 """
-Outage notification service.
+Outage notification service (M3).
 
 Builds personalized outage alert messages in each subscriber's preferred language
-using the configured ExplanationProvider (Sarvam AI / simulated) and dispatches them
-via the active NotificationProvider (Console / Twilio).
+using deterministic templates (pure, reliable) and optional Sarvam AI translation,
+dispatching them via the active NotificationProvider (Console / Twilio).
+Enforces HopTrace branding and provides accurate message_source metadata.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from app.providers.explanations import ExplanationProvider
 from app.providers.notifications import NotificationProvider
+from app.services.templates import render_message
+from app.services.translate import translate
 
 logger = logging.getLogger(__name__)
 
-
-def extract_explanation_summary(raw_explanation: str) -> str:
-    """Extract clean string summary if explanation provider returned JSON."""
-    raw = (raw_explanation or "").strip()
-    if raw.startswith("{") and raw.endswith("}"):
-        try:
-            data = json.loads(raw)
-            if isinstance(data, dict):
-                return (
-                    data.get("executive_summary")
-                    or data.get("subscriber_impact_brief")
-                    or data.get("technical_diagnosis")
-                    or raw
-                )
-        except Exception:
-            pass
-    return raw
+AP_TO_VILLAGE: dict[str, str] = {
+    "AP1": "Rampur",
+    "AP2": "Rampur",
+    "AP3": "Bhatpur",
+    "AP4": "Bhatpur",
+    "AP5": "Daulatpur",
+    "AP6": "Daulatpur",
+}
 
 
-def build_subscriber_outage_message(
-    incident: Dict[str, Any],
-    subscriber: Dict[str, Any],
-    explanation_provider: ExplanationProvider,
-    language_cache: Optional[Dict[str, str]] = None,
-) -> str:
-    """
-    Build a personalized outage alert in the subscriber's preferred language.
-
-    Uses explanation_provider to generate a grounded explanation for the incident,
-    cached per language to minimize LLM/service overhead.
-    """
-    lang = (subscriber.get("preferred_language") or "hi").lower().strip()
-    cache = language_cache if language_cache is not None else {}
-
-    if lang not in cache:
-        try:
-            raw_expl = explanation_provider.explain_incident(incident, language=lang)
-            clean_text = extract_explanation_summary(raw_expl)
-        except Exception as exc:
-            logger.warning("Failed to generate explanation for language %s: %s", lang, exc)
-            raise
-        cache[lang] = clean_text
-
-    base_text = cache[lang]
-    sub_name = subscriber.get("display_name") or subscriber.get("id") or "Subscriber"
-
-    # Friendly localized alert framing
-    if lang.startswith("hi"):
-        return f"नमस्ते {sub_name}, ग्राम नेट सूचना: {base_text} तकनीकी टीम बहाली कार्य कर रही है।"
-    elif lang.startswith("ta"):
-        return f"வணக்கம் {sub_name}, கிராம் நெட் அறிவிப்பு: {base_text} பழுதுபார்க்கும் பணி நடைபெறுகிறது."
-    elif lang.startswith("mr"):
-        return f"नमस्कार {sub_name}, ग्राम नेट सूचना: {base_text} दुरुस्तीचे काम सुरू आहे."
-    elif lang.startswith("te"):
-        return f"నమస్కారం {sub_name}, గ్రామ్ నెట్ సమాచారం: {base_text} సాంకేతిక బృందం పనిచేస్తోంది."
-    elif lang.startswith("kn"):
-        return f"ನಮಸ್ಕಾರ {sub_name}, ಗ್ರಾಮ್ ನೆಟ್ ಸೂಚನೆ: {base_text} ತಾಂತ್ರಿಕ ತಂಡ ಕಾರ್ಯನಿರ್ವಹಿಸುತ್ತಿದೆ."
-    elif lang.startswith("bn"):
-        return f"নমস্কার {sub_name}, গ্রাম নেট বিজ্ঞপ্তি: {base_text} মেরামতের কাজ চলছে।"
-    else:
-        return f"Dear {sub_name}, GramNet Alert: {base_text} Field restoration is in progress."
+def resolve_subscriber_village(subscriber: Dict[str, Any]) -> str:
+    """Resolve subscriber village from village field or access_point_id."""
+    v = subscriber.get("village")
+    if v and isinstance(v, str) and v.strip():
+        return v.strip().capitalize()
+    ap = subscriber.get("access_point_id") or subscriber.get("ap_id") or ""
+    return AP_TO_VILLAGE.get(ap.upper(), "")
 
 
 def generate_notification_previews(
     incident: Dict[str, Any],
     subscribers: List[Dict[str, Any]],
-    explanation_provider: ExplanationProvider,
     channel: str = "sms",
+    kind: str = "outage",
+    use_translation: bool = False,
+    explanation_provider: Any = None,
 ) -> List[Dict[str, Any]]:
-    """Build preview items for all targeted subscribers in their preferred languages."""
-    lang_cache: Dict[str, str] = {}
+    """
+    Build preview items for all targeted subscribers in their preferred languages.
+
+    Args:
+        incident: Incident dictionary with component and diagnosis details.
+        subscribers: List of subscriber records.
+        channel: Delivery channel ('sms' or 'whatsapp').
+        kind: Notification kind ('outage' or 'restored').
+        use_translation: If True, attempts Sarvam translation with deterministic template fallback.
+        explanation_provider: Optional explanation provider for backward compatibility.
+    """
     previews = []
+    comp_id = incident.get("suspected_component_id") or ""
+    inc_id = incident.get("id") or ""
 
     for sub in subscribers:
-        phone = sub.get("phone") or "+919876543200"
-        lang = (sub.get("preferred_language") or "hi").strip()
-        msg = build_subscriber_outage_message(
-            incident=incident,
-            subscriber=sub,
-            explanation_provider=explanation_provider,
-            language_cache=lang_cache,
-        )
+        sub_id = sub.get("id") or "UNKNOWN"
+        sub_name = sub.get("display_name") or sub.get("name") or sub_id
+        phone = sub.get("phone") or ""
+        lang = (sub.get("preferred_language") or "hi").strip().lower()
+        village = resolve_subscriber_village(sub)
+
+        ctx = {
+            "subscriber_name": sub_name,
+            "village": village,
+            "component_id": comp_id,
+            "incident_id": inc_id,
+        }
+
+        # Deterministic template for the subscriber's preferred language
+        template_msg = render_message(kind=kind, lang=lang, ctx=ctx)
+
+        if use_translation and lang != "en":
+            # Generate English base and translate to subscriber language
+            en_base = render_message(kind=kind, lang="en", ctx=ctx)
+            msg, source = translate(en_base, lang, fallback_text=template_msg)
+        else:
+            msg = template_msg
+            source = "template"
+
         previews.append({
-            "subscriber_id": sub.get("id"),
-            "subscriber_name": sub.get("display_name", sub.get("id")),
+            "subscriber_id": sub_id,
+            "subscriber_name": sub_name,
             "phone": phone,
             "preferred_language": lang,
             "channel": channel.lower(),
             "message": msg,
+            "message_source": source,
+            "village": village,
+            "eligible": bool(phone),
         })
 
     return previews
@@ -114,17 +103,22 @@ def dispatch_outage_notifications(
     incident: Dict[str, Any],
     subscribers: List[Dict[str, Any]],
     notification_provider: NotificationProvider,
-    explanation_provider: ExplanationProvider,
     channel: str = "sms",
+    kind: str = "outage",
+    use_translation: bool = False,
+    explanation_provider: Any = None,
 ) -> Dict[str, Any]:
     """
     Generate and dispatch outage notifications to all target subscribers.
+    Preserves exact provider and delivery failure details without fabricating.
     """
     previews = generate_notification_previews(
         incident=incident,
         subscribers=subscribers,
-        explanation_provider=explanation_provider,
         channel=channel,
+        kind=kind,
+        use_translation=use_translation,
+        explanation_provider=explanation_provider,
     )
 
     deliveries = []
@@ -135,6 +129,27 @@ def dispatch_outage_notifications(
         sub_id = item["subscriber_id"]
         recipient = item["phone"]
         msg = item["message"]
+        source = item["message_source"]
+        sub_name = item["subscriber_name"]
+        lang = item["preferred_language"]
+
+        # Validate phone
+        if not recipient or not recipient.strip():
+            deliveries.append({
+                "subscriber_id": sub_id,
+                "subscriber_name": sub_name,
+                "recipient": "",
+                "status": "failed",
+                "error": "Missing subscriber phone number",
+                "channel": channel.lower(),
+                "provider": notification_provider.provider_name,
+                "message": msg,
+                "message_source": source,
+                "language": lang,
+            })
+            failed_count += 1
+            continue
+
         try:
             res = notification_provider.send_notification(
                 recipient=recipient,
@@ -142,26 +157,33 @@ def dispatch_outage_notifications(
                 channel=channel,
                 subscriber_id=sub_id,
             )
+            actual_provider = res.get("provider", notification_provider.provider_name)
             deliveries.append({
                 "subscriber_id": sub_id,
+                "subscriber_name": sub_name,
                 "recipient": recipient,
                 "status": res.get("status", "sent"),
                 "message_id": res.get("message_id"),
                 "channel": channel.lower(),
-                "provider": notification_provider.provider_name,
+                "provider": actual_provider,
                 "message": msg,
+                "message_source": source,
+                "language": lang,
             })
             sent_count += 1
         except Exception as exc:
             logger.error("Failed to deliver notification to %s: %s", sub_id, exc)
             deliveries.append({
                 "subscriber_id": sub_id,
+                "subscriber_name": sub_name,
                 "recipient": recipient,
                 "status": "failed",
                 "error": str(exc),
                 "channel": channel.lower(),
                 "provider": notification_provider.provider_name,
                 "message": msg,
+                "message_source": source,
+                "language": lang,
             })
             failed_count += 1
 
